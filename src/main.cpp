@@ -1,5 +1,5 @@
 #include <Arduino.h>
-
+#include "messageType.hpp"
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 
@@ -9,7 +9,7 @@
 
 const uint16_t width = 12;
 const uint16_t height = 50;
-uint8_t pixels[width * height]{0};
+uint32_t pixels[width * height];
 
 const char SSID[] = "СКОТОБАЗА";
 const char password[] = "01012000iI";
@@ -28,11 +28,19 @@ void onEvent(AsyncWebSocket *server,
              uint8_t *data,
              size_t len);
 
-void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t len,AsyncWebSocketClient *sender);
-
+void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t len, AsyncWebSocketClient *sender);
+void fillSolidColor(uint32_t color)
+{
+  for (size_t i = 0; i < width * height; i++)
+  {
+    pixels[i] = color;
+  }
+}
 void setup()
 {
   Serial.begin(115200);
+
+  fillSolidColor(0);
 
   if (!LittleFS.begin())
     SignalErrorLed("LittleFS failed to configure");
@@ -76,47 +84,88 @@ void onEvent(AsyncWebSocket *server,
   switch (type)
   {
   case WS_EVT_CONNECT:
-    ws.text(client->id(),pixels,height*width);
-    Serial.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
+  {
+    //TODO little / big indian??
+    Serial.printf("WebSocket client #%u connected\n", client->id());
+
+    size_t sizeUint8 = (width * height + 1) * sizeof(pixels[0]); // 2404
+    size_t sizeUint32 = sizeUint8 / sizeof(pixels[0]);           // 601
+    uint32_t *buffer = new uint32_t[sizeUint32];
+    // buffer[0] = MessageType::InitialState;
+    memcpy(&buffer[1], pixels, sizeUint32 - 1);
+    uint8_t *bufferUint8_t = reinterpret_cast<uint8_t *>(buffer);
+    bufferUint8_t[0] = 1 << 6; //BUG
+    ws.binary(client->id(), bufferUint8_t, sizeUint8);
+    delete[] buffer;
     break;
+  }
   case WS_EVT_DISCONNECT:
+  {
     Serial.printf("WebSocket client #%u disconnected\n", client->id());
     break;
+  }
   case WS_EVT_DATA:
-    handleWebSocketMessage(arg, data, len , client);
+  {
+    handleWebSocketMessage(arg, data, len, client);
     break;
+  }
   case WS_EVT_PONG:
   case WS_EVT_ERROR:
     break;
   }
 }
 
-void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t len,AsyncWebSocketClient *sender)
+void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t len, AsyncWebSocketClient *sender)
 {
   const AwsFrameInfo *frameInfo = (AwsFrameInfo *)(msgInfo);
   if (frameInfo->final &&
       frameInfo->index == 0 &&
       frameInfo->len == len &&
-      frameInfo->opcode == WS_TEXT)
+      frameInfo->opcode == WS_BINARY) // ПРИНИМАЕМ ТОЛЬКО BIN
   {
-    data[len] = 0;
-    uint8_t x, y, state;
-    int n = sscanf((char *)data, "%d:%d %s", &x, &y, &state);
-    if (n != 3)
-      Serial.printf("Error while parsing\n %s\n", (char *)data);
-    pixels[y * width + x] = state;
 
-    AsyncWebSocket::AsyncWebSocketClientLinkedList clients = ws.getClients();
-    char buffer[32];
-    sprintf(buffer, "%d:%d %d", x, y, state);
-
-    for(auto client : clients)
+    const uint32_t msgType = (data[0] << 24) |
+                             (data[1] << 16) |
+                             (data[2] << 8) |
+                             (data[3] << 0);
+    switch (msgType)
     {
-      if(client != sender)
-        ws.text(client->id(), buffer);  
+    case MessageType::SetPoint:
+    {
+      //                                             r      g      b    alpha
+      //[msgType][msgType][msgType][msgType][x][y][color][color][color][color]
+      //    0        1        2         3    4  5    6      7      8
+      uint8_t x = data[4];
+      uint8_t y = data[5];
+      uint32_t color = (data[6] << 24) | (data[7] << 16) | (data[8] << 8) | (data[9] << 0);
+      pixels[y * width + x] = color;
+      AsyncWebSocket::AsyncWebSocketClientLinkedList clients = ws.getClients();
+      for (auto client : clients)
+      {
+        if (client != sender)
+          ws.binary(client->id(), data, len);
+      }
+      break;
     }
-
-    Serial.println(buffer);
+    case MessageType::FillSolid:
+    {
+      //                                       r      g      b    alpha
+      //[msgType][msgType][msgType][msgType][color][color][color][color]
+      //    0        1        2         3      6      7      8      9
+      uint32_t color = (data[6] << 24) | (data[7] << 16) | (data[8] << 8) | (data[9] << 0);
+      fillSolidColor(color);
+      AsyncWebSocket::AsyncWebSocketClientLinkedList clients = ws.getClients();
+      for (auto client : clients)
+      {
+        if (client != sender)
+          ws.binary(client->id(), data, len);
+      }
+      break;
+    }
+    default:
+      SignalErrorLed("Got error message");
+      break;
+    }
   }
 }
 void SignalErrorLed(const char *message)
@@ -130,6 +179,4 @@ void SignalErrorLed(const char *message)
     digitalWrite(ledPin, !digitalRead(ledPin));
   }
 }
-void loop()
-{
-}
+void loop() {}
