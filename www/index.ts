@@ -17,6 +17,16 @@ const colors = {
     off: '#FF0000' 
 };
 
+interface LastPoint {
+    col: number;
+    row: number;
+}
+const lastPoint: LastPoint = {
+    col: 5,
+    row: 10
+};
+
+
 const squaresState: boolean[][] = [];
 for (let col = 0; col < columns; col++) {
     squaresState[col] = [];
@@ -56,27 +66,31 @@ function getPointerCoordinates(event: PointerEvent | TouchEvent): { x: number, y
     return { x, y };
 }
 
+
 function handlePointerMove(event: PointerEvent | TouchEvent) {
     if (isPointerDown) {
-        event.preventDefault(); 
+        event.preventDefault();
         const { x, y } = getPointerCoordinates(event);
-        
+
         const col = Math.floor((x - (canvasWidth - columns * (squareSize + gap)) / 2) / (squareSize + gap));
         const row = Math.floor((y - (canvasHeight - rows * (squareSize + gap)) / 2) / (squareSize + gap));
-        
-        if (col >= 0 && col < columns && row >= 0 && row < rows) {
-            const point = new Point(col, row);
-            if (!Array.from(changedSquares).some(p => p.equals(point))) {
-                squaresState[col][row] = !squaresState[col][row];
-                
-                const callback = (col: number, row: number, state: boolean) => {
-                    console.log(`Square at (${col}, ${row}) is now ${state ? 'on' : 'off'}`);
-                };
-                callback(col, row, squaresState[col][row]);
-                
-                changedSquares.add(point);
-                
-                drawSquares();
+        if (!(row === lastPoint.row && col === lastPoint.col)) {
+            if (col >= 0 && col < columns && row >= 0 && row < rows) {
+                lastPoint.row = row;
+                lastPoint.col = col;
+                const point = new Point(col, row);
+                if (!Array.from(changedSquares).some(p => p.equals(point))) {
+                    squaresState[col][row] = !squaresState[col][row];
+
+                    const callback = (col: number, row: number, state: boolean) => {
+                        console.log(`Square at (${col}, ${row}) is now ${state ? 'on' : 'off'}`);
+                    };
+                    callback(col, row, squaresState[col][row]);
+
+                    changedSquares.add(point);
+
+                    drawSquares();
+                }
             }
         }
     }
@@ -86,12 +100,11 @@ function handlePointerDown(event: PointerEvent | TouchEvent) {
     const { x, y } = getPointerCoordinates(event);
     const col = Math.floor((x - (canvasWidth - columns * (squareSize + gap)) / 2) / (squareSize + gap));
     const row = Math.floor((y - (canvasHeight - rows * (squareSize + gap)) / 2) / (squareSize + gap));
-
+    lastPoint.row = row;
+    lastPoint.col = col;
     if (col >= 0 && col < columns && row >= 0 && row < rows) {
-        const point = new Point(col, row);
-        
         if (!isPointerDown) {
-            isPointerDown = true; 
+            isPointerDown = true;
             squaresState[col][row] = !squaresState[col][row];
 
             const callback = (col: number, row: number, state: boolean) => {

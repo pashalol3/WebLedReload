@@ -1,83 +1,92 @@
+"use strict";
 //Это сгенерировано нейросетью. Есть ошибки
-var canvas = document.getElementById('myCanvas');
-var ctx = canvas.getContext('2d');
-var canvasWidth = canvas.width;
-var canvasHeight = canvas.height;
-var columns = 12;
-var rows = 50;
-var gap = 2;
-var squareSize = 10;
-var colors = {
+const canvas = document.getElementById('myCanvas');
+const ctx = canvas.getContext('2d');
+const canvasWidth = canvas.width;
+const canvasHeight = canvas.height;
+const columns = 12;
+const rows = 50;
+const gap = 2;
+let squareSize = 10;
+const colors = {
     on: '#00FF00',
     off: '#FF0000'
 };
-var squaresState = [];
-for (var col = 0; col < columns; col++) {
+const lastPoint = {
+    col: 5,
+    row: 10
+};
+const squaresState = [];
+for (let col = 0; col < columns; col++) {
     squaresState[col] = [];
-    for (var row = 0; row < rows; row++) {
+    for (let row = 0; row < rows; row++) {
         squaresState[col][row] = false;
     }
 }
-var Point = /** @class */ (function () {
-    function Point(x, y) {
+class Point {
+    constructor(x, y) {
         this.x = x;
         this.y = y;
     }
-    Point.prototype.equals = function (other) {
+    equals(other) {
         return this.x === other.x && this.y === other.y;
-    };
-    return Point;
-}());
-var changedSquares = new Set();
-var isPointerDown = false;
+    }
+}
+const changedSquares = new Set();
+let isPointerDown = false;
 function drawSquares() {
-    for (var col = 0; col < columns; col++) {
-        for (var row = 0; row < rows; row++) {
-            var x = col * (squareSize + gap) + (canvasWidth - columns * (squareSize + gap)) / 2;
-            var y = row * (squareSize + gap) + (canvasHeight - rows * (squareSize + gap)) / 2;
-            var color = squaresState[col][row] ? colors.on : colors.off;
+    for (let col = 0; col < columns; col++) {
+        for (let row = 0; row < rows; row++) {
+            const x = col * (squareSize + gap) + (canvasWidth - columns * (squareSize + gap)) / 2;
+            const y = row * (squareSize + gap) + (canvasHeight - rows * (squareSize + gap)) / 2;
+            const color = squaresState[col][row] ? colors.on : colors.off;
             ctx.fillStyle = color;
             ctx.fillRect(x, y, squareSize, squareSize);
         }
     }
 }
 function getPointerCoordinates(event) {
-    var rect = canvas.getBoundingClientRect();
-    var x = 'clientX' in event ? event.clientX - rect.left : event.touches[0].clientX - rect.left;
-    var y = 'clientY' in event ? event.clientY - rect.top : event.touches[0].clientY - rect.top;
-    return { x: x, y: y };
+    const rect = canvas.getBoundingClientRect();
+    const x = 'clientX' in event ? event.clientX - rect.left : event.touches[0].clientX - rect.left;
+    const y = 'clientY' in event ? event.clientY - rect.top : event.touches[0].clientY - rect.top;
+    return { x, y };
 }
 function handlePointerMove(event) {
     if (isPointerDown) {
         event.preventDefault();
-        var _a = getPointerCoordinates(event), x = _a.x, y = _a.y;
-        var col = Math.floor((x - (canvasWidth - columns * (squareSize + gap)) / 2) / (squareSize + gap));
-        var row = Math.floor((y - (canvasHeight - rows * (squareSize + gap)) / 2) / (squareSize + gap));
-        if (col >= 0 && col < columns && row >= 0 && row < rows) {
-            var point_1 = new Point(col, row);
-            if (!Array.from(changedSquares).some(function (p) { return p.equals(point_1); })) {
-                squaresState[col][row] = !squaresState[col][row];
-                var callback = function (col, row, state) {
-                    console.log("Square at (".concat(col, ", ").concat(row, ") is now ").concat(state ? 'on' : 'off'));
-                };
-                callback(col, row, squaresState[col][row]);
-                changedSquares.add(point_1);
-                drawSquares();
+        const { x, y } = getPointerCoordinates(event);
+        const col = Math.floor((x - (canvasWidth - columns * (squareSize + gap)) / 2) / (squareSize + gap));
+        const row = Math.floor((y - (canvasHeight - rows * (squareSize + gap)) / 2) / (squareSize + gap));
+        if (!(row === lastPoint.row && col === lastPoint.col)) {
+            if (col >= 0 && col < columns && row >= 0 && row < rows) {
+                lastPoint.row = row;
+                lastPoint.col = col;
+                const point = new Point(col, row);
+                if (!Array.from(changedSquares).some(p => p.equals(point))) {
+                    squaresState[col][row] = !squaresState[col][row];
+                    const callback = (col, row, state) => {
+                        console.log(`Square at (${col}, ${row}) is now ${state ? 'on' : 'off'}`);
+                    };
+                    callback(col, row, squaresState[col][row]);
+                    changedSquares.add(point);
+                    drawSquares();
+                }
             }
         }
     }
 }
 function handlePointerDown(event) {
-    var _a = getPointerCoordinates(event), x = _a.x, y = _a.y;
-    var col = Math.floor((x - (canvasWidth - columns * (squareSize + gap)) / 2) / (squareSize + gap));
-    var row = Math.floor((y - (canvasHeight - rows * (squareSize + gap)) / 2) / (squareSize + gap));
+    const { x, y } = getPointerCoordinates(event);
+    const col = Math.floor((x - (canvasWidth - columns * (squareSize + gap)) / 2) / (squareSize + gap));
+    const row = Math.floor((y - (canvasHeight - rows * (squareSize + gap)) / 2) / (squareSize + gap));
+    lastPoint.row = row;
+    lastPoint.col = col;
     if (col >= 0 && col < columns && row >= 0 && row < rows) {
-        var point = new Point(col, row);
         if (!isPointerDown) {
             isPointerDown = true;
             squaresState[col][row] = !squaresState[col][row];
-            var callback = function (col, row, state) {
-                console.log("Square at (".concat(col, ", ").concat(row, ") is now ").concat(state ? 'on' : 'off'));
+            const callback = (col, row, state) => {
+                console.log(`Square at (${col}, ${row}) is now ${state ? 'on' : 'off'}`);
             };
             callback(col, row, squaresState[col][row]);
             drawSquares();
