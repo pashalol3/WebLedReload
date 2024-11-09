@@ -6,8 +6,8 @@
 const uint16_t width = 12;
 const uint16_t height = 50;
 
-const char SSID[] = "СКОТОБАЗА";
-const char password[] = "01012000iI";
+const char SSID[] = "";
+const char password[] = "";
 const IPAddress IP(192, 168, 1, 254);
 const IPAddress GATEWAY(192, 168, 1, 1);
 const IPAddress SUBNET(255, 255, 255, 0);
