@@ -19,7 +19,7 @@
     var MessageType;
     (function (MessageType) {
         MessageType[MessageType["InitialState"] = 1073741824] = "InitialState";
-        MessageType[MessageType["SetPoint"] = 536870912] = "SetPoint";
+        MessageType[MessageType["SetPoints"] = 536870912] = "SetPoints";
         MessageType[MessageType["FillSolid"] = 268435456] = "FillSolid";
     })(MessageType || (MessageType = {}));
     var isPointerDown = false;
@@ -31,16 +31,19 @@
     var ctx = canvas.getContext('2d');
     var canvasWidth = canvas.width;
     var canvasHeight = canvas.height;
-    var squaresState = [[]];
+    var defaultLedValue = 'undefined';
+    var changedLeds = [[]];
+    fillLeds(changedLeds, defaultLedValue);
+    var leds = [[]];
     var currentColor = '#ff0000';
-    var fillLeds = function (colorHex) {
+    function fillLeds(leds, colorHex) {
         for (var col = 0; col < COLUMNS_COUNT; col++) {
-            squaresState[col] = [];
+            leds[col] = [];
             for (var row = 0; row < ROWS_COUNT; row++) {
-                squaresState[col][row] = colorHex;
+                leds[col][row] = colorHex;
             }
         }
-    };
+    }
     var UINT32toRGB = function (uint32) {
         var r = (uint32 >> 16) & 0xFF;
         var g = (uint32 >> 8) & 0xFF;
@@ -84,22 +87,27 @@
                         var y = Math.floor(i / COLUMNS_COUNT);
                         var _a = UINT32toRGB(uint32Array[i]), r = _a.r, g = _a.g, b = _a.b;
                         var hexColor = RGBtoHEX(r, g, b);
-                        squaresState[x][y] = hexColor;
+                        leds[x][y] = hexColor;
                     }
                     break;
                 }
-                case MessageType.SetPoint: {
-                    //                                             r      g      b    alpha
-                    //[msgType][msgType][msgType][msgType][x][y][color][color][color][color]
-                    //    0        1        2         3    4  5    6      7      8     
-                    var x = dataView.getUint8(4);
-                    var y = dataView.getUint8(5);
-                    var r = dataView.getUint8(6);
-                    var g = dataView.getUint8(7);
-                    var b = dataView.getUint8(8);
+                case MessageType.SetPoints: {
+                    //    0        1        2        3     4  5  .  .  .  .  N-4   N-3   N-2    N-1
+                    //[msgType][msgType][msgType][msgType][x][y][x][y][x][y][red][green][blue][alpha]
+                    var len = arrayBuffer.byteLength;
+                    var uint8Array = new Uint8Array(arrayBuffer);
+                    var HEAD_SIZE = 4;
+                    var COLOR_SIZE = 4;
+                    var pointsCount = (len - HEAD_SIZE - COLOR_SIZE) / 2;
+                    var r = dataView.getUint8(len - 4);
+                    var g = dataView.getUint8(len - 3);
+                    var b = dataView.getUint8(len - 2);
                     var color = RGBtoHEX(r, g, b);
-                    squaresState[x][y] = color;
-                    console.log("".concat(x, ":").concat(y, " ").concat(color));
+                    for (var i = 0; i < pointsCount; ++i) {
+                        var x = dataView.getUint8(HEAD_SIZE + i * 2);
+                        var y = dataView.getUint8(HEAD_SIZE + i * 2 + 1);
+                        leds[x][y] = color;
+                    }
                     break;
                 }
                 case MessageType.FillSolid: {
@@ -110,7 +118,7 @@
                     var g = dataView.getUint8(5);
                     var b = dataView.getUint8(6);
                     var color = RGBtoHEX(r, g, b);
-                    fillLeds(color);
+                    fillLeds(leds, color);
                     break;
                 }
                 default:
@@ -127,7 +135,7 @@
             for (var row = 0; row < ROWS_COUNT; row++) {
                 var x = col * (SQUARE_SIZE + GAP) + (canvasWidth - COLUMNS_COUNT * (SQUARE_SIZE + GAP)) / 2;
                 var y = row * (SQUARE_SIZE + GAP) + (canvasHeight - ROWS_COUNT * (SQUARE_SIZE + GAP)) / 2;
-                ctx.fillStyle = squaresState[col][row];
+                ctx.fillStyle = leds[col][row];
                 ctx.fillRect(x, y, SQUARE_SIZE, SQUARE_SIZE);
             }
         }
@@ -139,26 +147,37 @@
         return Point.fromXY(x, y);
     };
     //TODO: Handle error
-    var ledStateSwitchCallback = function (point, colorHex) {
+    var ledStateSwitchCallback = function (changedLeds, colorHex) {
         //                                             r      g      b    alpha
         //[msgType][msgType][msgType][msgType][x][y][color][color][color][color]
         //    0        1        2         3    4  5    6      7      8     
+        var ledsCoords = [];
+        for (var col = 0; col < COLUMNS_COUNT; col++) {
+            for (var row = 0; row < ROWS_COUNT; row++) {
+                if (changedLeds[col][row] != defaultLedValue) {
+                    ledsCoords.push(Point.fromXY(col, row));
+                }
+            }
+        }
+        //    0        1        2        3     4  5  .  .  .  .  N-4   N-3   N-2    N-1
+        //[msgType][msgType][msgType][msgType][x][y][x][y][x][y][red][green][blue][alpha]
+        //[head][head][head][head] [n points] [n points] [r] [g] [b] [a]
+        var u8BufferLen = 4 + ledsCoords.length * 2 + 4;
+        var u8buffer = new Uint8Array(u8BufferLen);
+        var bytesOffset = 4;
+        var u8bufferDataView = new DataView(u8buffer.buffer);
+        for (var i = 0; i < ledsCoords.length; i++) {
+            var point = ledsCoords[i];
+            u8bufferDataView.setUint8(bytesOffset++, point.x);
+            u8bufferDataView.setUint8(bytesOffset++, point.y);
+        }
+        u8bufferDataView.setUint32(0, MessageType.SetPoints, false);
         var _a = HEXtoRGB(colorHex), r = _a.r, g = _a.g, b = _a.b;
-        var buffer = new Uint8Array([
-            0,
-            0,
-            0,
-            0,
-            point.x,
-            point.y,
-            r,
-            g,
-            b,
-            255,
-        ]);
-        var dataView = new DataView(buffer.buffer);
-        dataView.setUint32(0, MessageType.SetPoint, false);
-        ws.send(buffer);
+        u8bufferDataView.setUint8(bytesOffset++, r);
+        u8bufferDataView.setUint8(bytesOffset++, g);
+        u8bufferDataView.setUint8(bytesOffset++, b);
+        u8bufferDataView.setUint8(bytesOffset++, 255);
+        ws.send(u8bufferDataView);
     };
     var handlePointerMove = function (event) {
         if (isPointerDown) {
@@ -167,8 +186,8 @@
             var col = Math.floor((x - (canvasWidth - COLUMNS_COUNT * (SQUARE_SIZE + GAP)) / 2) / (SQUARE_SIZE + GAP));
             var row = Math.floor((y - (canvasHeight - ROWS_COUNT * (SQUARE_SIZE + GAP)) / 2) / (SQUARE_SIZE + GAP));
             if (col >= 0 && col < COLUMNS_COUNT && row >= 0 && row < ROWS_COUNT) {
-                ledStateSwitchCallback(Point.fromXY(col, row), currentColor);
-                squaresState[col][row] = currentColor;
+                changedLeds[col][row] = currentColor;
+                leds[col][row] = currentColor;
             }
         }
     };
@@ -193,20 +212,22 @@
             var dataView = new DataView(buffer.buffer);
             dataView.setUint32(0, MessageType.FillSolid, false);
             ws.send(buffer);
-            fillLeds(currentColor);
+            fillLeds(leds, currentColor);
         }
         var col = Math.floor((x - (canvasWidth - COLUMNS_COUNT * (SQUARE_SIZE + GAP)) / 2) / (SQUARE_SIZE + GAP));
         var row = Math.floor((y - (canvasHeight - ROWS_COUNT * (SQUARE_SIZE + GAP)) / 2) / (SQUARE_SIZE + GAP));
         if (col >= 0 && col < COLUMNS_COUNT && row >= 0 && row < ROWS_COUNT) {
             if (!isPointerDown) {
                 isPointerDown = true;
-                ledStateSwitchCallback(Point.fromXY(col, row), currentColor);
-                squaresState[col][row] = currentColor;
+                changedLeds[col][row] = currentColor;
+                leds[col][row] = currentColor;
             }
         }
     };
     function handlePointerUp() {
         isPointerDown = false;
+        ledStateSwitchCallback(changedLeds, currentColor);
+        fillLeds(changedLeds, defaultLedValue);
     }
     canvas.addEventListener('pointerdown', handlePointerDown);
     canvas.addEventListener('pointermove', handlePointerMove);
@@ -248,6 +269,6 @@
         drawCurrentColor();
         requestAnimationFrame(startAnimation);
     };
-    fillLeds('000000');
+    fillLeds(leds, '000000');
     startAnimation();
 })();

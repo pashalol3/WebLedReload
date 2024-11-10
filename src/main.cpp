@@ -7,8 +7,8 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-const uint16_t width = 12;
-const uint16_t height = 50;
+const int width = 12;
+const int height = 50;
 uint32_t pixels[width * height];
 
 const char SSID[] = "СКОТОБАЗА";
@@ -19,8 +19,8 @@ const IPAddress SUBNET(255, 255, 255, 0);
 
 AsyncWebServer server(80);
 AsyncWebSocket ws("/socket");
-
-void SignalErrorLed(const char *message);
+void AssertSignalErrorLed(bool predicate, const char *message, ...);
+void SignalErrorLed(const char *message, ...);
 void onEvent(AsyncWebSocket *server,
              AsyncWebSocketClient *client,
              AwsEventType type,
@@ -31,16 +31,14 @@ void onEvent(AsyncWebSocket *server,
 void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t len, AsyncWebSocketClient *sender);
 void fillSolidColor(uint32_t color)
 {
-  for (size_t i = 0; i < width * height; i++)
-  {
-    pixels[i] = color;
-  }
+  memset(pixels, color, width * height);
 }
 void setup()
 {
+
   Serial.begin(115200);
 
-  fillSolidColor(0);
+  fillSolidColor((uint32_t)0x000000);
 
   if (!LittleFS.begin())
     SignalErrorLed("LittleFS failed to configure");
@@ -83,18 +81,18 @@ void onEvent(AsyncWebSocket *server,
 {
   switch (type)
   {
+    // TODO little / big indian??
   case WS_EVT_CONNECT:
   {
-    //TODO little / big indian??
-    Serial.printf("WebSocket client #%u connected\n", client->id());
-
-    size_t sizeUint8 = (width * height + 1) * sizeof(pixels[0]); // 2404
-    size_t sizeUint32 = sizeUint8 / sizeof(pixels[0]);           // 601
+    size_t sizeUint8 = (width * height + 1) * sizeof(pixels[0]);
+    size_t sizeUint32 = sizeUint8 / sizeof(pixels[0]);
     uint32_t *buffer = new uint32_t[sizeUint32];
     // buffer[0] = MessageType::InitialState;
+    memset(buffer, 0x000000, sizeUint32);
     memcpy(&buffer[1], pixels, sizeUint32 - 1);
-    uint8_t *bufferUint8_t = reinterpret_cast<uint8_t *>(buffer);
-    bufferUint8_t[0] = 1 << 6; //BUG
+
+    uint8_t *bufferUint8_t = (uint8_t *)buffer;
+    bufferUint8_t[0] = 1 << 6; // BUG
     ws.binary(client->id(), bufferUint8_t, sizeUint8);
     delete[] buffer;
     break;
@@ -130,15 +128,28 @@ void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t len, AsyncWebSo
                              (data[3] << 0);
     switch (msgType)
     {
-    case MessageType::SetPoint:
+    case MessageType::SetPoints:
     {
-      //                                             r      g      b    alpha
-      //[msgType][msgType][msgType][msgType][x][y][color][color][color][color]
-      //    0        1        2         3    4  5    6      7      8
-      uint8_t x = data[4];
-      uint8_t y = data[5];
-      uint32_t color = (data[6] << 24) | (data[7] << 16) | (data[8] << 8) | (data[9] << 0);
-      pixels[y * width + x] = color;
+      // 0 1 2 3   4 5 6 7   8 9 10 11
+      // h h h h | x y x y | r g b  a
+
+      //    0        1        2        3     4  5  .  .  .  .  N-4   N-3   N-2    N-1
+      //[msgType][msgType][msgType][msgType][x][y][x][y][x][y][red][green][blue][alpha]
+      constexpr size_t HEAD_SIZE = 4;
+      constexpr size_t COLOR_SIZE = 4;
+      size_t pointsCount = (len - HEAD_SIZE - COLOR_SIZE) / 2;
+      uint32_t color =  (data[len - 4] << 24) | 
+                        (data[len - 3] << 16) | 
+                        (data[len - 2] << 8) | 
+                        (data[len - 1] << 0);
+
+      for (size_t i = 0; i < pointsCount; ++i)
+      {
+        uint8_t x = data[HEAD_SIZE + i * 2];
+        uint8_t y = data[HEAD_SIZE + i * 2 + 1];
+        pixels[y * width + x] = color;
+      }
+
       AsyncWebSocket::AsyncWebSocketClientLinkedList clients = ws.getClients();
       for (auto client : clients)
       {
@@ -168,11 +179,28 @@ void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t len, AsyncWebSo
     }
   }
 }
-void SignalErrorLed(const char *message)
+
+void AssertSignalErrorLed(bool predicate, const char *message, ...)
+{
+  if (!predicate)
+  {
+    va_list args;
+    va_start(args, message);
+    SignalErrorLed(message, args);
+    va_end(args);
+  }
+}
+
+void SignalErrorLed(const char *message, ...)
 {
   const uint8_t ledPin = 2;
   pinMode(ledPin, OUTPUT);
-  Serial.println(message);
+  va_list args;
+  va_start(args, message);
+  char formattedMessage[256];
+  vsnprintf(formattedMessage, sizeof(formattedMessage), message, args);
+  Serial.println(formattedMessage);
+  va_end(args);
   while (1)
   {
     delay(500);

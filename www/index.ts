@@ -15,7 +15,7 @@
     }
     enum MessageType {
         InitialState = 1 << 30,
-        SetPoint = 1 << 29,
+        SetPoints = 1 << 29,
         FillSolid = 1 << 28,
     }
 
@@ -30,13 +30,19 @@
     const ctx = canvas.getContext('2d')!;
     const canvasWidth = canvas.width;
     const canvasHeight = canvas.height;
-    const squaresState: string[][] = [[]];
+
+    const defaultLedValue: string = 'undefined';
+    const changedLeds: string[][] = [[]];
+    fillLeds(changedLeds, defaultLedValue);
+
+    const leds: string[][] = [[]];
     let currentColor = '#ff0000';
-    const fillLeds = (colorHex: string): void => {
+
+    function fillLeds(leds: string[][], colorHex: string): void {
         for (let col = 0; col < COLUMNS_COUNT; col++) {
-            squaresState[col] = [];
+            leds[col] = [];
             for (let row = 0; row < ROWS_COUNT; row++) {
-                squaresState[col][row] = colorHex;
+                leds[col][row] = colorHex;
             }
         }
     }
@@ -86,22 +92,31 @@
                         const y = Math.floor(i / COLUMNS_COUNT);
                         const { r, g, b } = UINT32toRGB(uint32Array[i]);
                         const hexColor = RGBtoHEX(r, g, b);
-                        squaresState[x][y] = hexColor;
+                        leds[x][y] = hexColor;
                     }
                     break;
                 }
-                case MessageType.SetPoint: {
-                    //                                             r      g      b    alpha
-                    //[msgType][msgType][msgType][msgType][x][y][color][color][color][color]
-                    //    0        1        2         3    4  5    6      7      8     
-                    const x = dataView.getUint8(4);
-                    const y = dataView.getUint8(5);
-                    const r = dataView.getUint8(6);
-                    const g = dataView.getUint8(7);
-                    const b = dataView.getUint8(8);
+                case MessageType.SetPoints: {
+                    //    0        1        2        3     4  5  .  .  .  .  N-4   N-3   N-2    N-1
+                    //[msgType][msgType][msgType][msgType][x][y][x][y][x][y][red][green][blue][alpha]
+                    const len = arrayBuffer.byteLength;
+                    const uint8Array = new Uint8Array(arrayBuffer);
+                    const HEAD_SIZE = 4;
+                    const COLOR_SIZE = 4;
+                    const pointsCount = (len - HEAD_SIZE - COLOR_SIZE) / 2;
+
+                    const r = dataView.getUint8(len - 4);
+                    const g = dataView.getUint8(len - 3);
+                    const b = dataView.getUint8(len - 2);
                     const color = RGBtoHEX(r, g, b);
-                    squaresState[x][y] = color;
-                    console.log(`${x}:${y} ${color}`);
+
+                    for (let i = 0; i < pointsCount; ++i) {
+                        const x = dataView.getUint8(HEAD_SIZE + i * 2);
+                        const y = dataView.getUint8(HEAD_SIZE + i * 2 + 1);
+                        leds[x][y] = color;
+                    }
+
+
                     break;
                 }
                 case MessageType.FillSolid: {
@@ -112,7 +127,7 @@
                     const g = dataView.getUint8(5);
                     const b = dataView.getUint8(6);
                     const color = RGBtoHEX(r, g, b);
-                    fillLeds(color);
+                    fillLeds(leds, color);
                     break;
                 }
                 default:
@@ -130,7 +145,7 @@
             for (let row = 0; row < ROWS_COUNT; row++) {
                 const x = col * (SQUARE_SIZE + GAP) + (canvasWidth - COLUMNS_COUNT * (SQUARE_SIZE + GAP)) / 2;
                 const y = row * (SQUARE_SIZE + GAP) + (canvasHeight - ROWS_COUNT * (SQUARE_SIZE + GAP)) / 2;
-                ctx.fillStyle = squaresState[col][row];
+                ctx.fillStyle = leds[col][row];
                 ctx.fillRect(x, y, SQUARE_SIZE, SQUARE_SIZE);
             }
         }
@@ -145,26 +160,39 @@
 
 
     //TODO: Handle error
-    const ledStateSwitchCallback = (point: Point, colorHex: string): void => {
+    const ledStateSwitchCallback = (changedLeds: string[][], colorHex: string): void => {
         //                                             r      g      b    alpha
         //[msgType][msgType][msgType][msgType][x][y][color][color][color][color]
         //    0        1        2         3    4  5    6      7      8     
+        const ledsCoords: Point[] = [];
+        for (let col = 0; col < COLUMNS_COUNT; col++) {
+            for (let row = 0; row < ROWS_COUNT; row++) {
+                if (changedLeds[col][row] != defaultLedValue) {
+                    ledsCoords.push(Point.fromXY(col, row));
+                }
+            }
+        }
+
+        //    0        1        2        3     4  5  .  .  .  .  N-4   N-3   N-2    N-1
+        //[msgType][msgType][msgType][msgType][x][y][x][y][x][y][red][green][blue][alpha]
+
+        //[head][head][head][head] [n points] [n points] [r] [g] [b] [a]
+        const u8BufferLen = 4 + ledsCoords.length * 2 + 4;
+        const u8buffer: Uint8Array = new Uint8Array(u8BufferLen);
+        let bytesOffset = 4;
+        const u8bufferDataView = new DataView(u8buffer.buffer);
+        for (let i = 0; i < ledsCoords.length; i++) {
+            const point = ledsCoords[i];
+            u8bufferDataView.setUint8(bytesOffset++, point.x);
+            u8bufferDataView.setUint8(bytesOffset++, point.y);
+        }
+        u8bufferDataView.setUint32(0, MessageType.SetPoints, false);
         const { r, g, b } = HEXtoRGB(colorHex);
-        const buffer: Uint8Array = new Uint8Array([
-            0,
-            0,
-            0,
-            0,
-            point.x,
-            point.y,
-            r,
-            g,
-            b,
-            255,
-        ]);
-        const dataView = new DataView(buffer.buffer);
-        dataView.setUint32(0, MessageType.SetPoint, false);
-        ws.send(buffer);
+        u8bufferDataView.setUint8(bytesOffset++, r);
+        u8bufferDataView.setUint8(bytesOffset++, g);
+        u8bufferDataView.setUint8(bytesOffset++, b);
+        u8bufferDataView.setUint8(bytesOffset++, 255);
+        ws.send(u8bufferDataView);
     }
 
     const handlePointerMove = (event: PointerEvent | TouchEvent) => {
@@ -177,8 +205,8 @@
 
             if (col >= 0 && col < COLUMNS_COUNT && row >= 0 && row < ROWS_COUNT) {
 
-                ledStateSwitchCallback(Point.fromXY(col, row), currentColor);
-                squaresState[col][row] = currentColor;
+                changedLeds[col][row] = currentColor;
+                leds[col][row] = currentColor;
             }
         }
 
@@ -207,15 +235,15 @@
             const dataView = new DataView(buffer.buffer);
             dataView.setUint32(0, MessageType.FillSolid, false);
             ws.send(buffer);
-            fillLeds(currentColor);
+            fillLeds(leds, currentColor);
         }
         const col = Math.floor((x - (canvasWidth - COLUMNS_COUNT * (SQUARE_SIZE + GAP)) / 2) / (SQUARE_SIZE + GAP));
         const row = Math.floor((y - (canvasHeight - ROWS_COUNT * (SQUARE_SIZE + GAP)) / 2) / (SQUARE_SIZE + GAP));
         if (col >= 0 && col < COLUMNS_COUNT && row >= 0 && row < ROWS_COUNT) {
             if (!isPointerDown) {
                 isPointerDown = true;
-                ledStateSwitchCallback(Point.fromXY(col, row), currentColor);
-                squaresState[col][row] = currentColor
+                changedLeds[col][row] = currentColor;
+                leds[col][row] = currentColor
             }
         }
     }
@@ -223,6 +251,8 @@
 
     function handlePointerUp() {
         isPointerDown = false;
+        ledStateSwitchCallback(changedLeds, currentColor);
+        fillLeds(changedLeds, defaultLedValue);
     }
 
 
@@ -272,7 +302,7 @@
         drawCurrentColor();
         requestAnimationFrame(startAnimation);
     }
-    fillLeds('000000');
+    fillLeds(leds, '000000');
     startAnimation();
 })();
 
