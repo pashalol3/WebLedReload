@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebLed</title>
+    <script src="settings.js" defer></script>
+    <style>
+        body {
+            background-color: #181818;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            display: grid;
+            grid-auto-columns: 1fr;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr;
+            gap: 3px 3px;
+            grid-template-areas:
+                "settings preview";
+        }
+        canvas {
+            display: block;
+        }
+        .settings {
+            display: flex;
+            flex-direction: column;
+            grid-area: settings;
+            height: 80vh;
+            width: 40vw;
+        }
+
+        .preview {
+            grid-area: preview;
+            height: 80vh;
+            width: 40vw;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="settings">
+            <div>
+                <label style="color: white; font-size: 2rem;" >Тип ленты:</label>
+                <select style="font-size: 2rem; width: 50%; background-color: rgb(146, 148, 143);"id="ledType">
+                    <option value="WS2811">WS2811</option>
+                    <option value="WS2812B">WS2812B</option>
+                </select>
+            </div>
+            <div>
+                <label style="color: white; font-size: 2rem;">Количестов столбцов:</label>
+                <input id="columnCount" style="font-size: 2rem; background-color: rgb(146, 148, 143);" type="number">
+            </div>
+            <div>
+                <label style="color: white; font-size: 2rem;" >Количестов строк:</label>
+                <input id="rowCount" style="font-size: 2rem; background-color: rgb(146, 148, 143);" type="number">
+            </div>
+            <br>
+            <br>
+            <button id="bSave" style="background-color: wheat;font-size: 2rem;">Сохранить</button>
+        </div>
+        <div  class="preview">
+            <canvas id="myCanvas" width="900" height="900"></canvas>
+        </div>
+    </div>
+
+</body>
+
+
+</html>

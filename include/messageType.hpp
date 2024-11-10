@@ -1,6 +1,6 @@
-enum MessageType : uint32_t
+enum MessageType : uint8_t
 {
-    InitialState = 1 << 30,
-    SetPoints = 1 << 29,
-    FillSolid = 1 << 28,
+    InitialState = 1,
+    SetPoints = 2,
+    FillSolid = 3,
 };

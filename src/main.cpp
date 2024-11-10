@@ -2,13 +2,16 @@
 #include "messageType.hpp"
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
-
+#include "FastLED.h"
 #include "LittleFS.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-const int width = 12;
+const int width = 2;
 const int height = 50;
+const int ledPin = 16;
+
+CRGB leds[width * height];
 uint32_t pixels[width * height];
 
 const char SSID[] = "СКОТОБАЗА";
@@ -31,14 +34,21 @@ void onEvent(AsyncWebSocket *server,
 void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t len, AsyncWebSocketClient *sender);
 void fillSolidColor(uint32_t color)
 {
-  memset(pixels, color, width * height);
+  for (size_t i = 0; i < width * height; i++)
+  {
+    pixels[i] = color;
+    leds[i] = color;
+  }
 }
 void setup()
 {
 
   Serial.begin(115200);
 
-  fillSolidColor((uint32_t)0x000000);
+  FastLED.addLeds<WS2811, ledPin, GRB>(leds, width * height);
+  FastLED.setBrightness(100);
+  fillSolidColor((uint32_t)0xff0000);
+  FastLED.show();
 
   if (!LittleFS.begin())
     SignalErrorLed("LittleFS failed to configure");
@@ -81,20 +91,15 @@ void onEvent(AsyncWebSocket *server,
 {
   switch (type)
   {
-    // TODO little / big indian??
   case WS_EVT_CONNECT:
   {
-    size_t sizeUint8 = (width * height + 1) * sizeof(pixels[0]);
-    size_t sizeUint32 = sizeUint8 / sizeof(pixels[0]);
-    uint32_t *buffer = new uint32_t[sizeUint32];
-    // buffer[0] = MessageType::InitialState;
-    memset(buffer, 0x000000, sizeUint32);
-    memcpy(&buffer[1], pixels, sizeUint32 - 1);
-
-    uint8_t *bufferUint8_t = (uint8_t *)buffer;
-    bufferUint8_t[0] = 1 << 6; // BUG
-    ws.binary(client->id(), bufferUint8_t, sizeUint8);
-    delete[] buffer;
+    //                 |      600                  4      |          1      | (2401)
+    size_t sizeU8 = (width * height) * sizeof(pixels[0]) + sizeof(uint8_t);
+    uint8_t buffer[sizeU8];
+    memcpy(&buffer[1], pixels, sizeU8 - 1);
+    uint8_t *bufferU8 = (uint8_t *)buffer;
+    bufferU8[0] = MessageType::InitialState;
+    ws.binary(client->id(), bufferU8, sizeU8);
     break;
   }
   case WS_EVT_DISCONNECT:
@@ -122,33 +127,29 @@ void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t len, AsyncWebSo
       frameInfo->opcode == WS_BINARY) // ПРИНИМАЕМ ТОЛЬКО BIN
   {
 
-    const uint32_t msgType = (data[0] << 24) |
-                             (data[1] << 16) |
-                             (data[2] << 8) |
-                             (data[3] << 0);
+    const uint8_t msgType = data[0];
+
     switch (msgType)
     {
     case MessageType::SetPoints:
     {
-      // 0 1 2 3   4 5 6 7   8 9 10 11
-      // h h h h | x y x y | r g b  a
-
-      //    0        1        2        3     4  5  .  .  .  .  N-4   N-3   N-2    N-1
-      //[msgType][msgType][msgType][msgType][x][y][x][y][x][y][red][green][blue][alpha]
-      constexpr size_t HEAD_SIZE = 4;
+      //    0     1  2  .  .  .  .  N-4   N-3   N-2    N-1
+      //[msgType][x][y][x][y][x][y][red][green][blue][alpha]
+      constexpr size_t HEAD_SIZE = 1;
       constexpr size_t COLOR_SIZE = 4;
       size_t pointsCount = (len - HEAD_SIZE - COLOR_SIZE) / 2;
-      uint32_t color =  (data[len - 4] << 24) | 
-                        (data[len - 3] << 16) | 
-                        (data[len - 2] << 8) | 
-                        (data[len - 1] << 0);
-
-      for (size_t i = 0; i < pointsCount; ++i)
+      uint32_t color = (data[len - 4] << 24) |
+                       (data[len - 3] << 16) |
+                       (data[len - 2] << 8) |
+                       (data[len - 1] << 0);
+      for (size_t i = 0; i < pointsCount; i++)
       {
         uint8_t x = data[HEAD_SIZE + i * 2];
         uint8_t y = data[HEAD_SIZE + i * 2 + 1];
         pixels[y * width + x] = color;
+        leds[y * width + x] = color;
       }
+      FastLED.show();
 
       AsyncWebSocket::AsyncWebSocketClientLinkedList clients = ws.getClients();
       for (auto client : clients)
@@ -160,11 +161,12 @@ void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t len, AsyncWebSo
     }
     case MessageType::FillSolid:
     {
-      //                                       r      g      b    alpha
-      //[msgType][msgType][msgType][msgType][color][color][color][color]
-      //    0        1        2         3      6      7      8      9
-      uint32_t color = (data[6] << 24) | (data[7] << 16) | (data[8] << 8) | (data[9] << 0);
+      //           r      g      b    alpha
+      //[msgType][color][color][color][color]
+      //    0       1      2      3      5
+      uint32_t color = (data[1] << 24) | (data[2] << 16) | (data[3] << 8) | (data[4] << 0);
       fillSolidColor(color);
+      FastLED.show();
       AsyncWebSocket::AsyncWebSocketClientLinkedList clients = ws.getClients();
       for (auto client : clients)
       {
@@ -207,4 +209,23 @@ void SignalErrorLed(const char *message, ...)
     digitalWrite(ledPin, !digitalRead(ledPin));
   }
 }
-void loop() {}
+void loop()
+{
+  // for (int i = 0; i < width*height; i++) {
+  //   leds[i] = CRGB::Red;  // Устанавливаем красный цвет
+  // }
+  // FastLED.show();
+  // delay(1000);
+
+  // for (int i = 0; i < width*height; i++) {
+  //   leds[i] = CRGB::Green;  // Устанавливаем зелёный цвет
+  // }
+  // FastLED.show();
+  // delay(1000);
+
+  // for (int i = 0; i < width*height; i++) {
+  //   leds[i] = CRGB::Blue;  // Устанавливаем синий цвет
+  // }
+  // FastLED.show();
+  // delay(1000);
+}

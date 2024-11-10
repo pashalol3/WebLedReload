@@ -14,14 +14,14 @@
         }
     }
     enum MessageType {
-        InitialState = 1 << 30,
-        SetPoints = 1 << 29,
-        FillSolid = 1 << 28,
+        InitialState = 1,
+        SetPoints = 2,
+        FillSolid = 3,
     }
 
     let isPointerDown = false;
 
-    const COLUMNS_COUNT = 12;
+    const COLUMNS_COUNT = 2;
     const ROWS_COUNT = 50;
     const GAP = 2;
     const SQUARE_SIZE = 12;
@@ -80,12 +80,12 @@
         if (event.data instanceof ArrayBuffer) {
             const arrayBuffer = event.data as ArrayBuffer;
             const dataView = new DataView(arrayBuffer);
-            const msgType: MessageType = dataView.getUint32(0);
-            //[msgType][msgType][msgType][msgType][payload]
-            //    0        1        2        3     .......
+            const msgType: MessageType = dataView.getUint8(0);
+            //[msgType][payload]
+            //   0     .......
             switch (msgType) {
                 case MessageType.InitialState: {
-                    const slicedBuffer = arrayBuffer.slice(4);
+                    const slicedBuffer = arrayBuffer.slice(1);
                     const uint32Array = new Uint32Array(slicedBuffer);
                     for (let i = 0; i < uint32Array.length; i++) {
                         const x = i % COLUMNS_COUNT;
@@ -97,11 +97,10 @@
                     break;
                 }
                 case MessageType.SetPoints: {
-                    //    0        1        2        3     4  5  .  .  .  .  N-4   N-3   N-2    N-1
-                    //[msgType][msgType][msgType][msgType][x][y][x][y][x][y][red][green][blue][alpha]
+                    //    0     4  5  .  .  .  .  N-4   N-3   N-2    N-1
+                    //[msgType][x][y][x][y][x][y][red][green][blue][alpha]
                     const len = arrayBuffer.byteLength;
-                    const uint8Array = new Uint8Array(arrayBuffer);
-                    const HEAD_SIZE = 4;
+                    const HEAD_SIZE = 1;
                     const COLOR_SIZE = 4;
                     const pointsCount = (len - HEAD_SIZE - COLOR_SIZE) / 2;
 
@@ -120,12 +119,12 @@
                     break;
                 }
                 case MessageType.FillSolid: {
-                    //                                       r      g      b    alpha
-                    //[msgType][msgType][msgType][msgType][color][color][color][color]
-                    //    0        1        2        3       4      5      6      7
-                    const r = dataView.getUint8(4);
-                    const g = dataView.getUint8(5);
-                    const b = dataView.getUint8(6);
+                    //            r      g      b    alpha
+                    //[msgType][color][color][color][color]
+                    //    0        1     2      3      4
+                    const r = dataView.getUint8(1);
+                    const g = dataView.getUint8(2);
+                    const b = dataView.getUint8(3);
                     const color = RGBtoHEX(r, g, b);
                     fillLeds(leds, color);
                     break;
@@ -161,9 +160,9 @@
 
     //TODO: Handle error
     const ledStateSwitchCallback = (changedLeds: string[][], colorHex: string): void => {
-        //                                             r      g      b    alpha
-        //[msgType][msgType][msgType][msgType][x][y][color][color][color][color]
-        //    0        1        2         3    4  5    6      7      8     
+        //                  r      g      b    alpha
+        //[msgType][x][y][color][color][color][color]
+        //    0     1  2    3      4      5     
         const ledsCoords: Point[] = [];
         for (let col = 0; col < COLUMNS_COUNT; col++) {
             for (let row = 0; row < ROWS_COUNT; row++) {
@@ -173,20 +172,22 @@
             }
         }
 
-        //    0        1        2        3     4  5  .  .  .  .  N-4   N-3   N-2    N-1
-        //[msgType][msgType][msgType][msgType][x][y][x][y][x][y][red][green][blue][alpha]
+        //    0     1  2  .  .  .  .  N-4   N-3   N-2    N-1
+        //[msgType][x][y][x][y][x][y][red][green][blue][alpha]
 
-        //[head][head][head][head] [n points] [n points] [r] [g] [b] [a]
-        const u8BufferLen = 4 + ledsCoords.length * 2 + 4;
+        //[head] [n points] [n points] [r] [g] [b] [a]
+        const headSize = 1;
+        const colorSize = 4;
+        const u8BufferLen = headSize + ledsCoords.length * 2 + colorSize;
         const u8buffer: Uint8Array = new Uint8Array(u8BufferLen);
-        let bytesOffset = 4;
+        let bytesOffset = headSize;
         const u8bufferDataView = new DataView(u8buffer.buffer);
         for (let i = 0; i < ledsCoords.length; i++) {
             const point = ledsCoords[i];
             u8bufferDataView.setUint8(bytesOffset++, point.x);
             u8bufferDataView.setUint8(bytesOffset++, point.y);
         }
-        u8bufferDataView.setUint32(0, MessageType.SetPoints, false);
+        u8bufferDataView.setUint8(0, MessageType.SetPoints);
         const { r, g, b } = HEXtoRGB(colorHex);
         u8bufferDataView.setUint8(bytesOffset++, r);
         u8bufferDataView.setUint8(bytesOffset++, g);
@@ -224,16 +225,13 @@
             const { r, g, b } = HEXtoRGB(currentColor);
             const buffer: Uint8Array = new Uint8Array([
                 0,
-                0,
-                0,
-                0,
                 r,
                 g,
                 b,
                 255,
             ]);
             const dataView = new DataView(buffer.buffer);
-            dataView.setUint32(0, MessageType.FillSolid, false);
+            dataView.setUint8(0, MessageType.FillSolid);
             ws.send(buffer);
             fillLeds(leds, currentColor);
         }
