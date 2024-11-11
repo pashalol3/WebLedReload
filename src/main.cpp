@@ -7,7 +7,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-const int width = 2;
+const int width = 12;
 const int height = 50;
 const int ledPin = 16;
 
@@ -40,6 +40,8 @@ void fillSolidColor(uint32_t color)
 }
 void setup()
 {
+  uint32_t number = 0b11111111111111111111111100000000;
+  uint8_t *nums = (uint8_t *)number;
 
   Serial.begin(115200);
 
@@ -72,6 +74,21 @@ void setup()
   server.on("/index.js", HTTP_GET, [](AsyncWebServerRequest *request)
             {
                   AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/index.js.gz", "text/javascript");
+                  response->addHeader("Content-Encoding", "gzip");
+                  request->send(response); });
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+            {
+                  AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/settings.html.gz", "text/html");
+                  response->addHeader("Content-Encoding", "gzip");
+                  request->send(response); });
+  server.on("/settings.js", HTTP_GET, [](AsyncWebServerRequest *request)
+            {
+                  AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/settings.js.gz", "text/javascript");
+                  response->addHeader("Content-Encoding", "gzip");
+                  request->send(response); });
+  server.on("/common.mjs", HTTP_GET, [](AsyncWebServerRequest *request)
+            {
+                  AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/common.mjs.gz", "text/javascript");
                   response->addHeader("Content-Encoding", "gzip");
                   request->send(response); });
 
@@ -107,7 +124,7 @@ void onEvent(AsyncWebSocket *server,
     for (size_t i = 1; i < sizeU8 - 3; i += 4)
     {
       ledIndex = (i - 1) / 4;
-      bufferU8[  i  ] = 0;
+      bufferU8[i] = 0; // may use for additional info
       bufferU8[i + 1] = leds[ledIndex].r;
       bufferU8[i + 2] = leds[ledIndex].g;
       bufferU8[i + 3] = leds[ledIndex].b;
@@ -131,12 +148,12 @@ void onEvent(AsyncWebSocket *server,
   }
 }
 
-void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t len, AsyncWebSocketClient *sender)
+void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t N, AsyncWebSocketClient *sender)
 {
   const AwsFrameInfo *frameInfo = (AwsFrameInfo *)(msgInfo);
   if (frameInfo->final &&
       frameInfo->index == 0 &&
-      frameInfo->len == len &&
+      frameInfo->len == N &&
       frameInfo->opcode == WS_BINARY) // ПРИНИМАЕМ ТОЛЬКО BIN
   {
 
@@ -150,24 +167,25 @@ void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t len, AsyncWebSo
       //[msgType][x][y][x][y][x][y][alpha][red][green][blue]
       constexpr size_t HEAD_SIZE = 1;
       constexpr size_t COLOR_SIZE = 4;
-      size_t pointsCount = (len - HEAD_SIZE - COLOR_SIZE) / 2;
-      uint32_t color = (data[len - 4] << 24) | //alpha
-                       (data[len - 3] << 16) | //red
-                       (data[len - 2] << 8)  | //green
-                       (data[len - 1] << 0);   //blue
+      size_t pointsCount = (N - HEAD_SIZE - COLOR_SIZE) / 2;
+      uint32_t color = (data[N - 4] << 24) | // alpha
+                       (data[N - 3] << 16) | // red
+                       (data[N - 2] << 8) |  // green
+                       (data[N - 1] << 0);   // blue
       for (size_t i = 0; i < pointsCount; i++)
       {
         uint8_t x = data[HEAD_SIZE + i * 2];
         uint8_t y = data[HEAD_SIZE + i * 2 + 1];
         leds[y * width + x] = color;
       }
+      Serial.printf("SetPoints: Color is %08X\n" , color);
       FastLED.show();
 
       AsyncWebSocket::AsyncWebSocketClientLinkedList clients = ws.getClients();
       for (auto client : clients)
       {
         if (client != sender)
-          ws.binary(client->id(), data, len);
+          ws.binary(client->id(), data, N);
       }
       break;
     }
@@ -175,16 +193,18 @@ void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t len, AsyncWebSo
     {
       //           N-4   N-3   N-2   N-1
       //[msgType][alpha][red][green][blue]
-      //    0       1      2      3      5
-      uint32_t color = (data[1] << 24) | (data[2] << 16) | (data[3] << 8) | (data[4] << 0);
+      //    0       1     2     3     4
+      uint32_t color = (data[N - 4] << 24) | (data[N - 3] << 16) | (data[N - 2] << 8) | (data[N - 1] << 0);
       fillSolidColor(color);
       FastLED.show();
       AsyncWebSocket::AsyncWebSocketClientLinkedList clients = ws.getClients();
       for (auto client : clients)
       {
         if (client != sender)
-          ws.binary(client->id(), data, len);
+          ws.binary(client->id(), data, N);
       }
+      Serial.printf("FillSolid: Color is %08X\n" , color);
+
       break;
     }
     default:

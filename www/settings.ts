@@ -1,4 +1,4 @@
-import { MessageType, Point } from './common.mjs';
+import Point from './common.mjs';
 
 
 (() => {
@@ -6,6 +6,7 @@ import { MessageType, Point } from './common.mjs';
     const inputColumnCount = document.getElementById("columnCount") as HTMLInputElement;;
     const inputRowCount = document.getElementById("rowCount") as HTMLInputElement;
     const ledTypeSelect = document.getElementById("ledType") as HTMLSelectElement;
+    const lableCoords = document.getElementById("coords") as HTMLLabelElement;
 
     const canvas = document.getElementById("myCanvas") as HTMLCanvasElement;
     const ctx = canvas?.getContext('2d');
@@ -61,19 +62,9 @@ import { MessageType, Point } from './common.mjs';
 
         if (col >= 0 && col < COLUMNS_COUNT && row >= 0 && row < ROWS_COUNT) {
 
-            if (ctx === null)
-                throw new Error('Canvas ctx is null');
-            ctx.save();
-            const LABEL_SIZE = 200;
-            ctx.fillStyle = '#181818'
-            ctx.fillRect(0, 0, LABEL_SIZE, LABEL_SIZE)
-            ctx.fillStyle = 'white';
-            ctx.font = '24px Calibri';
-            ctx.textAlign = 'center';
-            ctx.fillText(`X:${row.toString().padStart(2, '0')} : Y:${col.toString().padStart(2, '0')}`, 60, 60);
-
-            ctx.restore();
-
+            if (lableCoords === null)
+                throw new Error('lableCoords ctx is null');
+            lableCoords.textContent = `Координаты: X:${row.toString().padStart(2, '0')} : Y:${col.toString().padStart(2, '0')}`;
         }
 
 

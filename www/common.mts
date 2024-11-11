@@ -1,4 +1,4 @@
-class Point {
+export default class Point {
     constructor(public x: number, public y: number) { }
 
     equals(other: Point): boolean {
@@ -18,10 +18,3 @@ class Point {
     }
 
 }
-enum MessageType {
-    InitialState = 1,
-    SetPoints = 2,
-    FillSolid = 3,
-}
-
-export {Point , MessageType};

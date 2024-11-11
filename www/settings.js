@@ -1,10 +1,11 @@
-import { Point } from './common.mjs';
+import Point from './common.mjs';
 (() => {
     const saveButton = document.getElementById("bSave");
     const inputColumnCount = document.getElementById("columnCount");
     ;
     const inputRowCount = document.getElementById("rowCount");
     const ledTypeSelect = document.getElementById("ledType");
+    const lableCoords = document.getElementById("coords");
     const canvas = document.getElementById("myCanvas");
     const ctx = canvas === null || canvas === void 0 ? void 0 : canvas.getContext('2d');
     const canvasWidth = canvas.width;
@@ -47,17 +48,9 @@ import { Point } from './common.mjs';
         const col = Math.floor((x - (canvasWidth - COLUMNS_COUNT * (SQUARE_SIZE + GAP)) / 2) / (SQUARE_SIZE + GAP));
         const row = Math.floor((y - (canvasHeight - ROWS_COUNT * (SQUARE_SIZE + GAP)) / 2) / (SQUARE_SIZE + GAP));
         if (col >= 0 && col < COLUMNS_COUNT && row >= 0 && row < ROWS_COUNT) {
-            if (ctx === null)
-                throw new Error('Canvas ctx is null');
-            ctx.save();
-            const LABEL_SIZE = 200;
-            ctx.fillStyle = '#181818';
-            ctx.fillRect(0, 0, LABEL_SIZE, LABEL_SIZE);
-            ctx.fillStyle = 'white';
-            ctx.font = '24px Calibri';
-            ctx.textAlign = 'center';
-            ctx.fillText(`X:${row.toString().padStart(2, '0')} : Y:${col.toString().padStart(2, '0')}`, 60, 60);
-            ctx.restore();
+            if (lableCoords === null)
+                throw new Error('lableCoords ctx is null');
+            lableCoords.textContent = `Координаты: X:${row.toString().padStart(2, '0')} : Y:${col.toString().padStart(2, '0')}`;
         }
     }
     function previewLeds() {

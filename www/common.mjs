@@ -19,10 +19,4 @@ Point.getPointerCoordinates = (canvas, event) => {
     const y = 'clientY' in event ? event.clientY - rect.top : event.touches[0].clientY - rect.top;
     return Point.fromXY(x, y);
 };
-var MessageType;
-(function (MessageType) {
-    MessageType[MessageType["InitialState"] = 1] = "InitialState";
-    MessageType[MessageType["SetPoints"] = 2] = "SetPoints";
-    MessageType[MessageType["FillSolid"] = 3] = "FillSolid";
-})(MessageType || (MessageType = {}));
-export { Point, MessageType };
+export default Point;

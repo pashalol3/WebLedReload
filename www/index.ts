@@ -1,6 +1,12 @@
-import {MessageType , Point} from './common.mjs';
+import  Point from './common.mjs';
 
 (() => {
+    //!!!!!!ВО ВСЕХ СООБЩЕНИЯХ, ДЛЯ ПЕРЕВОДА ИЗ UINT8 в UINT32 ИСПОЛЬЗОВАТЬ LITTLE ENDIAN FALSE!!!!!!
+    enum MessageType {
+        InitialState = 1,
+        SetPoints = 2,
+        FillSolid = 3,
+    }
 
     let isPointerDown = false;
 
@@ -17,6 +23,16 @@ import {MessageType , Point} from './common.mjs';
     const defaultLedValue: string = 'undefined';
     const changedLeds: string[][] = [[]];
     fillLeds(changedLeds, defaultLedValue);
+
+    //EXAMPLE
+    //power Of 2      31                                7       
+    //bigEndian:    0b00000000 0b00000000 0b00000000 0b10000000    
+    //littleEndian: 0b10000000 0b00000000 0b00000000 0b00000000
+    // const buffer = new Uint8Array([0b00000000,0b00000000 ,0b00000000, 0b10000000]).buffer;
+    // const dw = new DataView(buffer);
+    // const bigIndian = dw.getUint32(0,false);    //128
+    // const littleEndian = dw.getUint32(0,true);  //2147483648
+    //EXAMPLE
 
     const leds: string[][] = [[]];
     let currentColor = '#000000';
@@ -67,11 +83,14 @@ import {MessageType , Point} from './common.mjs';
             switch (msgType) {
                 case MessageType.InitialState: {
                     const slicedBuffer = arrayBuffer.slice(1);
-                    const uint32Array = new Uint32Array(slicedBuffer);
-                    for (let i = 0; i < uint32Array.length; i++) {
+                    const dataView = new DataView(slicedBuffer);
+                    const uint32ArrayLength = dataView.byteLength / 4;
+                
+                    for (let i = 0; i < uint32ArrayLength; i++) {
+                        const uint32 = dataView.getUint32(i * 4, false); 
                         const x = i % COLUMNS_COUNT;
                         const y = Math.floor(i / COLUMNS_COUNT);
-                        const { r, g, b } = UINT32toRGB(uint32Array[i]);
+                        const { r, g, b } = UINT32toRGB(uint32);
                         const hexColor = RGBtoHEX(r, g, b);
                         leds[x][y] = hexColor;
                     }
@@ -176,7 +195,7 @@ import {MessageType , Point} from './common.mjs';
     const handlePointerMove = (event: PointerEvent | TouchEvent) => {
         if (isPointerDown) {
             event.preventDefault();
-            const { x, y } = Point.getPointerCoordinates(canvas,event);
+            const { x, y } = Point.getPointerCoordinates(canvas, event);
 
             const col = Math.floor((x - (canvasWidth - COLUMNS_COUNT * (SQUARE_SIZE + GAP)) / 2) / (SQUARE_SIZE + GAP));
             const row = Math.floor((y - (canvasHeight - ROWS_COUNT * (SQUARE_SIZE + GAP)) / 2) / (SQUARE_SIZE + GAP));
@@ -192,10 +211,11 @@ import {MessageType , Point} from './common.mjs';
 
 
     const handlePointerDown = (event: PointerEvent | TouchEvent) => {
-        const { x, y } = Point.getPointerCoordinates(canvas,event);
+        const { x, y } = Point.getPointerCoordinates(canvas, event);
         if (y < panelHeight) {
             const pixel = ctx.getImageData(x, y, 1, 1).data;
             currentColor = RGBtoHEX(pixel[0], pixel[1], pixel[2]);
+            //BUG: Обработать тот факт, что ТОЛЬКО ПОМЕНЯЛСЯ ЦВЕТ, ОТПРАВЛЯТЬ НИЧЕГО НЕ НЕДО. ОТПРАВКА ПРОИЗОЙДЕТ В handlePointerUp
         }
         if (y > 1.5 * panelHeight && y < 2 * panelHeight * 1.5) {
 
@@ -223,7 +243,6 @@ import {MessageType , Point} from './common.mjs';
             }
         }
     }
-
 
     function handlePointerUp() {
         isPointerDown = false;
