@@ -1,5 +1,4 @@
 "use strict";
-//Это сгенерировано нейросетью. Есть ошибки
 (() => {
     class Point {
         constructor(x, y) {
@@ -23,7 +22,7 @@
         MessageType[MessageType["FillSolid"] = 3] = "FillSolid";
     })(MessageType || (MessageType = {}));
     let isPointerDown = false;
-    const COLUMNS_COUNT = 2;
+    const COLUMNS_COUNT = 12;
     const ROWS_COUNT = 50;
     const GAP = 2;
     const SQUARE_SIZE = 12;
@@ -35,7 +34,7 @@
     const changedLeds = [[]];
     fillLeds(changedLeds, defaultLedValue);
     const leds = [[]];
-    let currentColor = '#ff0000';
+    let currentColor = '#000000';
     function fillLeds(leds, colorHex) {
         for (let col = 0; col < COLUMNS_COUNT; col++) {
             leds[col] = [];
@@ -57,9 +56,7 @@
         return { r, g, b };
     };
     const RGBtoHEX = (r, g, b) => {
-        const toHex = (value) => {
-            return value.toString(16).padStart(2, '0');
-        };
+        const toHex = (value) => value.toString(16).padStart(2, '0');
         return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
     };
     const wsAddress = `ws://${window.location.hostname}/socket`;
@@ -134,8 +131,10 @@
             for (let row = 0; row < ROWS_COUNT; row++) {
                 const x = col * (SQUARE_SIZE + GAP) + (canvasWidth - COLUMNS_COUNT * (SQUARE_SIZE + GAP)) / 2;
                 const y = row * (SQUARE_SIZE + GAP) + (canvasHeight - ROWS_COUNT * (SQUARE_SIZE + GAP)) / 2;
+                ctx.save();
                 ctx.fillStyle = leds[col][row];
                 ctx.fillRect(x, y, SQUARE_SIZE, SQUARE_SIZE);
+                ctx.restore();
             }
         }
     };
@@ -160,7 +159,6 @@
         }
         //    0     1  2  .  .  .  .  N-4   N-3   N-2    N-1
         //[msgType][x][y][x][y][x][y][red][green][blue][alpha]
-        //[head] [n points] [n points] [r] [g] [b] [a]
         const headSize = 1;
         const colorSize = 4;
         const u8BufferLen = headSize + ledsCoords.length * 2 + colorSize;
@@ -246,10 +244,13 @@
         gradient.addColorStop(0.71, 'indigo');
         gradient.addColorStop(0.85, 'violet');
         gradient.addColorStop(1.00, 'white');
+        ctx.save();
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, canvas.width, panelHeight);
+        ctx.restore();
     };
     const drawCurrentColor = () => {
+        ctx.save();
         ctx.fillStyle = currentColor;
         ctx.fillRect(0, panelHeight + 10, canvas.width, panelHeight);
         const r = 255 - parseInt(currentColor.slice(1, 3), 16);
@@ -260,6 +261,7 @@
         ctx.textAlign = 'center';
         ctx.font = `32px Verdana`;
         ctx.fillText('ТЕКУЩИЙ ЦВЕТ', canvas.width / 2, panelHeight * 2.2);
+        ctx.restore();
     };
     const startAnimation = () => {
         drawSquares();
@@ -267,6 +269,6 @@
         drawCurrentColor();
         requestAnimationFrame(startAnimation);
     };
-    fillLeds(leds, '000000');
+    fillLeds(leds, currentColor);
     startAnimation();
 })();

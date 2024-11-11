@@ -21,6 +21,7 @@
     let ROWS_COUNT = 50;
     let COLUMNS_COUNT = 12;
     let LED_TYPE = 'WS2812B';
+    
     //REMOVE THIS
     ledTypeSelect.value = LED_TYPE;
     inputColumnCount.value = COLUMNS_COUNT.toString();
