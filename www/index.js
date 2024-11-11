@@ -68,15 +68,16 @@ import { MessageType, Point } from './common.mjs';
                     break;
                 }
                 case MessageType.SetPoints: {
-                    //    0     4  5  .  .  .  .  N-4   N-3   N-2    N-1
-                    //[msgType][x][y][x][y][x][y][red][green][blue][alpha]
-                    const len = arrayBuffer.byteLength;
+                    //    0     4  5  .  .  .  .   N-4   N-3   N-2   N-1
+                    //[msgType][x][y][x][y][x][y][alpha][red][green][blue]
+                    const N = arrayBuffer.byteLength;
                     const HEAD_SIZE = 1;
                     const COLOR_SIZE = 4;
-                    const pointsCount = (len - HEAD_SIZE - COLOR_SIZE) / 2;
-                    const r = dataView.getUint8(len - 4);
-                    const g = dataView.getUint8(len - 3);
-                    const b = dataView.getUint8(len - 2);
+                    const pointsCount = (N - HEAD_SIZE - COLOR_SIZE) / 2;
+                    const a = dataView.getUint8(N - 4);
+                    const r = dataView.getUint8(N - 3);
+                    const g = dataView.getUint8(N - 2);
+                    const b = dataView.getUint8(N - 1);
                     const color = RGBtoHEX(r, g, b);
                     for (let i = 0; i < pointsCount; ++i) {
                         const x = dataView.getUint8(HEAD_SIZE + i * 2);
@@ -86,12 +87,13 @@ import { MessageType, Point } from './common.mjs';
                     break;
                 }
                 case MessageType.FillSolid: {
-                    //            r      g      b    alpha
-                    //[msgType][color][color][color][color]
-                    //    0        1     2      3      4
-                    const r = dataView.getUint8(1);
-                    const g = dataView.getUint8(2);
-                    const b = dataView.getUint8(3);
+                    //           N-4   N-3   N-2   N-1
+                    //[msgType][alpha][red][green][blue]
+                    //    0        1    2     3      4
+                    const a = dataView.getUint8(1);
+                    const r = dataView.getUint8(2);
+                    const g = dataView.getUint8(3);
+                    const b = dataView.getUint8(4);
                     const color = RGBtoHEX(r, g, b);
                     fillLeds(leds, color);
                     break;
@@ -145,10 +147,10 @@ import { MessageType, Point } from './common.mjs';
         }
         u8bufferDataView.setUint8(0, MessageType.SetPoints);
         const { r, g, b } = HEXtoRGB(colorHex);
-        u8bufferDataView.setUint8(bytesOffset++, r);
-        u8bufferDataView.setUint8(bytesOffset++, g);
-        u8bufferDataView.setUint8(bytesOffset++, b);
-        u8bufferDataView.setUint8(bytesOffset++, 255);
+        u8bufferDataView.setUint8(bytesOffset++, 0); //alpha
+        u8bufferDataView.setUint8(bytesOffset++, r); //red
+        u8bufferDataView.setUint8(bytesOffset++, g); //green
+        u8bufferDataView.setUint8(bytesOffset++, b); //blue
         ws.send(u8bufferDataView);
     };
     const handlePointerMove = (event) => {
@@ -173,10 +175,10 @@ import { MessageType, Point } from './common.mjs';
             const { r, g, b } = HEXtoRGB(currentColor);
             const buffer = new Uint8Array([
                 0,
+                255,
                 r,
                 g,
                 b,
-                255,
             ]);
             const dataView = new DataView(buffer.buffer);
             dataView.setUint8(0, MessageType.FillSolid);

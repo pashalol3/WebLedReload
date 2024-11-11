@@ -12,7 +12,6 @@ const int height = 50;
 const int ledPin = 16;
 
 CRGB leds[width * height];
-uint32_t pixels[width * height];
 
 const char SSID[] = "СКОТОБАЗА";
 const char password[] = "01012000iI";
@@ -36,7 +35,6 @@ void fillSolidColor(uint32_t color)
 {
   for (size_t i = 0; i < width * height; i++)
   {
-    pixels[i] = color;
     leds[i] = color;
   }
 }
@@ -94,11 +92,26 @@ void onEvent(AsyncWebSocket *server,
   case WS_EVT_CONNECT:
   {
     //                 |      600                  4      |          1      | (2401)
-    size_t sizeU8 = (width * height) * sizeof(pixels[0]) + sizeof(uint8_t);
-    uint8_t buffer[sizeU8];
-    memcpy(&buffer[1], pixels, sizeU8 - 1);
-    uint8_t *bufferU8 = (uint8_t *)buffer;
+    // size_t sizeU8 = (width * height) * sizeof(pixels[0]) + sizeof(uint8_t);
+    // uint8_t buffer[sizeU8];
+    // memcpy(&buffer[1], pixels, sizeU8 - 1);
+    // uint8_t *bufferU8 = (uint8_t *)buffer;
+    // bufferU8[0] = MessageType::InitialState;
+    // ws.binary(client->id(), bufferU8, sizeU8);
+
+    size_t sizeU8 = (width * height) * sizeof(uint32_t) + sizeof(uint8_t);
+    uint8_t bufferU8[sizeU8];
+    size_t ledIndex = 0;
     bufferU8[0] = MessageType::InitialState;
+
+    for (size_t i = 1; i < sizeU8 - 3; i += 4)
+    {
+      ledIndex = (i - 1) / 4;
+      bufferU8[  i  ] = 0;
+      bufferU8[i + 1] = leds[ledIndex].r;
+      bufferU8[i + 2] = leds[ledIndex].g;
+      bufferU8[i + 3] = leds[ledIndex].b;
+    }
     ws.binary(client->id(), bufferU8, sizeU8);
     break;
   }
@@ -133,20 +146,19 @@ void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t len, AsyncWebSo
     {
     case MessageType::SetPoints:
     {
-      //    0     1  2  .  .  .  .  N-4   N-3   N-2    N-1
-      //[msgType][x][y][x][y][x][y][red][green][blue][alpha]
+      //    0     1  2  .  .  .  .   N-4   N-3   N-2   N-1
+      //[msgType][x][y][x][y][x][y][alpha][red][green][blue]
       constexpr size_t HEAD_SIZE = 1;
       constexpr size_t COLOR_SIZE = 4;
       size_t pointsCount = (len - HEAD_SIZE - COLOR_SIZE) / 2;
-      uint32_t color = (data[len - 4] << 24) |
-                       (data[len - 3] << 16) |
-                       (data[len - 2] << 8) |
-                       (data[len - 1] << 0);
+      uint32_t color = (data[len - 4] << 24) | //alpha
+                       (data[len - 3] << 16) | //red
+                       (data[len - 2] << 8)  | //green
+                       (data[len - 1] << 0);   //blue
       for (size_t i = 0; i < pointsCount; i++)
       {
         uint8_t x = data[HEAD_SIZE + i * 2];
         uint8_t y = data[HEAD_SIZE + i * 2 + 1];
-        pixels[y * width + x] = color;
         leds[y * width + x] = color;
       }
       FastLED.show();
@@ -161,8 +173,8 @@ void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t len, AsyncWebSo
     }
     case MessageType::FillSolid:
     {
-      //           r      g      b    alpha
-      //[msgType][color][color][color][color]
+      //           N-4   N-3   N-2   N-1
+      //[msgType][alpha][red][green][blue]
       //    0       1      2      3      5
       uint32_t color = (data[1] << 24) | (data[2] << 16) | (data[3] << 8) | (data[4] << 0);
       fillSolidColor(color);
@@ -211,21 +223,4 @@ void SignalErrorLed(const char *message, ...)
 }
 void loop()
 {
-  // for (int i = 0; i < width*height; i++) {
-  //   leds[i] = CRGB::Red;  // Устанавливаем красный цвет
-  // }
-  // FastLED.show();
-  // delay(1000);
-
-  // for (int i = 0; i < width*height; i++) {
-  //   leds[i] = CRGB::Green;  // Устанавливаем зелёный цвет
-  // }
-  // FastLED.show();
-  // delay(1000);
-
-  // for (int i = 0; i < width*height; i++) {
-  //   leds[i] = CRGB::Blue;  // Устанавливаем синий цвет
-  // }
-  // FastLED.show();
-  // delay(1000);
 }

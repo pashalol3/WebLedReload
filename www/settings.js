@@ -65,9 +65,15 @@ import { Point } from './common.mjs';
             return;
         ctx.fillStyle = backgroundColor;
         ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+        while (ROWS_COUNT * (SQUARE_SIZE + GAP) < canvasHeight ||
+            COLUMNS_COUNT * (SQUARE_SIZE + GAP) <= canvasWidth) {
+            SQUARE_SIZE++;
+            GAP += 0.005;
+        }
         while (ROWS_COUNT * (SQUARE_SIZE + GAP) >= canvasHeight ||
             COLUMNS_COUNT * (SQUARE_SIZE + GAP) >= canvasWidth) {
             SQUARE_SIZE--;
+            GAP -= 0.005;
             if (SQUARE_SIZE <= 0)
                 throw new Error("SQUARE_SIZE <= 0");
         }

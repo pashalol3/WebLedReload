@@ -1,4 +1,4 @@
-import {MessageType , Point} from './common.mjs';
+import { MessageType, Point } from './common.mjs';
 
 
 (() => {
@@ -60,20 +60,20 @@ import {MessageType , Point} from './common.mjs';
         const row = Math.floor((y - (canvasHeight - ROWS_COUNT * (SQUARE_SIZE + GAP)) / 2) / (SQUARE_SIZE + GAP));
 
         if (col >= 0 && col < COLUMNS_COUNT && row >= 0 && row < ROWS_COUNT) {
-            
-            if(ctx === null)
+
+            if (ctx === null)
                 throw new Error('Canvas ctx is null');
             ctx.save();
             const LABEL_SIZE = 200;
             ctx.fillStyle = '#181818'
-            ctx.fillRect(0,0,LABEL_SIZE ,LABEL_SIZE)
+            ctx.fillRect(0, 0, LABEL_SIZE, LABEL_SIZE)
             ctx.fillStyle = 'white';
             ctx.font = '24px Calibri';
             ctx.textAlign = 'center';
-            ctx.fillText(`X:${row.toString().padStart(2,'0')} : Y:${col.toString().padStart(2,'0')}`,60 , 60);
+            ctx.fillText(`X:${row.toString().padStart(2, '0')} : Y:${col.toString().padStart(2, '0')}`, 60, 60);
 
             ctx.restore();
-          
+
         }
 
 
@@ -85,12 +85,20 @@ import {MessageType , Point} from './common.mjs';
         ctx.fillStyle = backgroundColor;
         ctx.fillRect(0, 0, canvasWidth, canvasHeight)
 
+        while (ROWS_COUNT * (SQUARE_SIZE + GAP) < canvasHeight ||
+            COLUMNS_COUNT * (SQUARE_SIZE + GAP) <= canvasWidth) {
+            SQUARE_SIZE++;
+            GAP+= 0.005;
+        }
+
         while (ROWS_COUNT * (SQUARE_SIZE + GAP) >= canvasHeight ||
             COLUMNS_COUNT * (SQUARE_SIZE + GAP) >= canvasWidth) {
             SQUARE_SIZE--;
+            GAP-= 0.005;
             if (SQUARE_SIZE <= 0)
                 throw new Error("SQUARE_SIZE <= 0")
         }
+
 
         for (let col = 0; col < COLUMNS_COUNT; col++) {
             for (let row = 0; row < ROWS_COUNT; row++) {
