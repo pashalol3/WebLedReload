@@ -1,4 +1,4 @@
-import { MessageType, Point } from './common.mjs';
+import { MessageType, Point } from './common';
 (() => {
     let isPointerDown = false;
     const COLUMNS_COUNT = 12;

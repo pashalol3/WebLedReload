@@ -1,22 +1,6 @@
-(() => {
-    class Point {
-        constructor(public x: number, public y: number) { }
+import {MessageType , Point} from './common.mjs';
 
-        equals(other: Point): boolean {
-            return this.x === other.x && this.y === other.y;
-        }
-        static fromXY(x: number, y: number): Point {
-            return new Point(x, y);
-        }
-        static zero(): Point {
-            return new Point(0, 0);
-        }
-    }
-    enum MessageType {
-        InitialState = 1,
-        SetPoints = 2,
-        FillSolid = 3,
-    }
+(() => {
 
     let isPointerDown = false;
 
@@ -149,13 +133,6 @@
         }
     }
 
-    const getPointerCoordinates = (event: PointerEvent | TouchEvent): Point => {
-        const rect = canvas.getBoundingClientRect();
-        const x = 'clientX' in event ? event.clientX - rect.left : event.touches[0].clientX - rect.left;
-        const y = 'clientY' in event ? event.clientY - rect.top : event.touches[0].clientY - rect.top;
-        return Point.fromXY(x, y);
-    }
-
 
     //TODO: Handle error
     const ledStateSwitchCallback = (changedLeds: string[][], colorHex: string): void => {
@@ -197,7 +174,7 @@
     const handlePointerMove = (event: PointerEvent | TouchEvent) => {
         if (isPointerDown) {
             event.preventDefault();
-            const { x, y } = getPointerCoordinates(event);
+            const { x, y } = Point.getPointerCoordinates(canvas,event);
 
             const col = Math.floor((x - (canvasWidth - COLUMNS_COUNT * (SQUARE_SIZE + GAP)) / 2) / (SQUARE_SIZE + GAP));
             const row = Math.floor((y - (canvasHeight - ROWS_COUNT * (SQUARE_SIZE + GAP)) / 2) / (SQUARE_SIZE + GAP));
@@ -213,7 +190,7 @@
 
 
     const handlePointerDown = (event: PointerEvent | TouchEvent) => {
-        const { x, y } = getPointerCoordinates(event);
+        const { x, y } = Point.getPointerCoordinates(canvas,event);
         if (y < panelHeight) {
             const pixel = ctx.getImageData(x, y, 1, 1).data;
             currentColor = RGBtoHEX(pixel[0], pixel[1], pixel[2]);

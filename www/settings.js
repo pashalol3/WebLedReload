@@ -1,4 +1,4 @@
-"use strict";
+import { Point } from './common.mjs';
 (() => {
     const saveButton = document.getElementById("bSave");
     const inputColumnCount = document.getElementById("columnCount");
@@ -39,6 +39,27 @@
         inputRowCount.value = ROWS_COUNT.toString();
     };
     saveButton === null || saveButton === void 0 ? void 0 : saveButton.addEventListener('click', handleSave);
+    canvas.addEventListener('pointermove', handlePointerMove);
+    canvas.addEventListener('touchmove', handlePointerMove);
+    function handlePointerMove(event) {
+        event.preventDefault();
+        const { x, y } = Point.getPointerCoordinates(canvas, event);
+        const col = Math.floor((x - (canvasWidth - COLUMNS_COUNT * (SQUARE_SIZE + GAP)) / 2) / (SQUARE_SIZE + GAP));
+        const row = Math.floor((y - (canvasHeight - ROWS_COUNT * (SQUARE_SIZE + GAP)) / 2) / (SQUARE_SIZE + GAP));
+        if (col >= 0 && col < COLUMNS_COUNT && row >= 0 && row < ROWS_COUNT) {
+            if (ctx === null)
+                throw new Error('Canvas ctx is null');
+            ctx.save();
+            const LABEL_SIZE = 200;
+            ctx.fillStyle = '#181818';
+            ctx.fillRect(0, 0, LABEL_SIZE, LABEL_SIZE);
+            ctx.fillStyle = 'white';
+            ctx.font = '24px Calibri';
+            ctx.textAlign = 'center';
+            ctx.fillText(`X:${row.toString().padStart(2, '0')} : Y:${col.toString().padStart(2, '0')}`, 60, 60);
+            ctx.restore();
+        }
+    }
     function previewLeds() {
         if (ctx === null)
             return;
@@ -57,18 +78,6 @@
                 ctx.fillStyle = defaultColor;
                 ctx.fillRect(x, y, SQUARE_SIZE, SQUARE_SIZE);
             }
-        }
-        for (let col = 0; col < COLUMNS_COUNT; col++) {
-            const x = col * (SQUARE_SIZE + GAP) + (canvasWidth - COLUMNS_COUNT * (SQUARE_SIZE + GAP)) / 2;
-            ctx.fillStyle = 'white';
-            ctx.font = '12px Calibri';
-            ctx.fillText(`${col}`, x + 0.5 * GAP, 5 * GAP);
-        }
-        for (let row = 0; row < ROWS_COUNT; row++) {
-            const y = row * (SQUARE_SIZE + GAP) + (canvasHeight - ROWS_COUNT * (SQUARE_SIZE + GAP)) / 2;
-            ctx.fillStyle = 'white';
-            ctx.font = '12px Calibri';
-            ctx.fillText(`${row}`, canvasWidth / 2 - COLUMNS_COUNT * (1.5 * GAP + SQUARE_SIZE / 2), y + 6 * GAP);
         }
     }
     function handleSave(ev) {

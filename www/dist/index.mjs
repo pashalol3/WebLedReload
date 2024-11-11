@@ -245,3 +245,4 @@ import { MessageType, Point } from './common.mjs';
     fillLeds(leds, currentColor);
     startAnimation();
 })();
+//# sourceMappingURL=index.mjs.map
