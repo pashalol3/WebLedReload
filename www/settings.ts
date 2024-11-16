@@ -1,11 +1,21 @@
-import Point from './common.mjs';
-
-
 (() => {
+
+    enum MessageType {
+        SetFullState = 1,
+        SetPointsSolidColor = 2,
+        SetSolidColor = 3,
+        SetOnePixel = 4, 
+        Settings = 5
+    }
+    const getPointerCoordinates = (canvas: HTMLCanvasElement ,event: PointerEvent | TouchEvent) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = 'clientX' in event ? event.clientX - rect.left : event.touches[0].clientX - rect.left;
+        const y = 'clientY' in event ? event.clientY - rect.top : event.touches[0].clientY - rect.top;
+        return {x, y};
+    }
     const saveButton = document.getElementById("bSave");
     const inputColumnCount = document.getElementById("columnCount") as HTMLInputElement;;
     const inputRowCount = document.getElementById("rowCount") as HTMLInputElement;
-    const ledTypeSelect = document.getElementById("ledType") as HTMLSelectElement;
     const lableCoords = document.getElementById("coords") as HTMLLabelElement;
 
     const canvas = document.getElementById("myCanvas") as HTMLCanvasElement;
@@ -27,7 +37,6 @@ import Point from './common.mjs';
     let LED_TYPE = 'WS2812B';
 
     //REMOVE THIS
-    ledTypeSelect.value = LED_TYPE;
     inputColumnCount.value = COLUMNS_COUNT.toString();
     inputRowCount.value = ROWS_COUNT.toString();
     //END REMOVE THIS
@@ -43,7 +52,6 @@ import Point from './common.mjs';
         throw new Error(`WebSocket connection closed: ${event}`);
     }
     ws.onmessage = (event) => {
-        ledTypeSelect.value = LED_TYPE;
         inputColumnCount.value = COLUMNS_COUNT.toString();
         inputRowCount.value = ROWS_COUNT.toString();
     }
@@ -55,7 +63,7 @@ import Point from './common.mjs';
 
     function handlePointerMove(event: PointerEvent | TouchEvent) {
         event.preventDefault();
-        const { x, y } = Point.getPointerCoordinates(canvas, event);
+        const { x, y } = getPointerCoordinates(canvas, event);
 
         const col = Math.floor((x - (canvasWidth - COLUMNS_COUNT * (SQUARE_SIZE + GAP)) / 2) / (SQUARE_SIZE + GAP));
         const row = Math.floor((y - (canvasHeight - ROWS_COUNT * (SQUARE_SIZE + GAP)) / 2) / (SQUARE_SIZE + GAP));
@@ -79,13 +87,13 @@ import Point from './common.mjs';
         while (ROWS_COUNT * (SQUARE_SIZE + GAP) < canvasHeight ||
             COLUMNS_COUNT * (SQUARE_SIZE + GAP) <= canvasWidth) {
             SQUARE_SIZE++;
-            GAP+= 0.005;
+            GAP += 0.005;
         }
 
         while (ROWS_COUNT * (SQUARE_SIZE + GAP) >= canvasHeight ||
             COLUMNS_COUNT * (SQUARE_SIZE + GAP) >= canvasWidth) {
             SQUARE_SIZE--;
-            GAP-= 0.005;
+            GAP -= 0.005;
             if (SQUARE_SIZE <= 0)
                 throw new Error("SQUARE_SIZE <= 0")
         }
@@ -101,7 +109,6 @@ import Point from './common.mjs';
         }
     }
     function handleSave(ev: MouseEvent) {
-        const ledType = ledTypeSelect?.value;
         const rowCount: number = parseInt(inputRowCount?.value, 10);
         if (rowCount <= 0 || Number.isNaN(rowCount)) {
             alert("Количестов строк не может быть <= 0");
@@ -112,11 +119,19 @@ import Point from './common.mjs';
             alert("Количестов столбцов не может быть <= 0");
             return;
         }
-        LED_TYPE = ledType;
         ROWS_COUNT = rowCount;
         COLUMNS_COUNT = columnCount;
+        const buffer: Uint8Array = new Uint8Array([
+            0,
+            ROWS_COUNT,
+            COLUMNS_COUNT
+        ]);
+        const dataView = new DataView(buffer.buffer);
+        dataView.setUint8(0, MessageType.Settings);
+        ws.send(buffer);
+
         previewLeds();
-        console.log(`lt:${ledType} rc:${rowCount} cc:${columnCount}`)
+
     }
     function fillLeds(leds: string[][], colorHex: string): void {
         for (let col = 0; col < COLUMNS_COUNT; col++) {

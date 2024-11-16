@@ -7,11 +7,10 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-const int width = 12;
-const int height = 50;
-const int ledPin = 16;
-
-CRGB leds[width * height];
+int width{0};
+int height{0};
+const int LED_PIN = 16;
+CRGB *leds = nullptr;
 
 const char SSID[] = "СКОТОБАЗА";
 const char password[] = "01012000iI";
@@ -21,6 +20,9 @@ const IPAddress SUBNET(255, 255, 255, 0);
 
 AsyncWebServer server(80);
 AsyncWebSocket ws("/socket");
+
+void writeConfig(int width, int height);
+void setPixel(uint8_t x, uint8_t y, uint32_t color);
 void AssertSignalErrorLed(bool predicate, const char *message, ...);
 void SignalErrorLed(const char *message, ...);
 void onEvent(AsyncWebSocket *server,
@@ -38,64 +40,6 @@ void fillSolidColor(uint32_t color)
     leds[i] = color;
   }
 }
-void setup()
-{
-  uint32_t number = 0b11111111111111111111111100000000;
-  uint8_t *nums = (uint8_t *)number;
-
-  Serial.begin(115200);
-
-  FastLED.addLeds<WS2811, ledPin, GRB>(leds, width * height);
-  FastLED.setBrightness(100);
-  fillSolidColor((uint32_t)0xff0000);
-  FastLED.show();
-
-  if (!LittleFS.begin())
-    SignalErrorLed("LittleFS failed to configure");
-
-  if (!WiFi.config(IP, GATEWAY, SUBNET))
-    SignalErrorLed("WiFi init fail...");
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(SSID, password);
-
-  if (WiFi.waitForConnectResult() != WL_CONNECTED)
-  {
-    char buffer[64];
-    sprintf(buffer, "Could't conect to %s with password %s", SSID, password);
-    SignalErrorLed(buffer);
-  }
-
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
-            {
-                  AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/index.html.gz", "text/html");
-                  response->addHeader("Content-Encoding", "gzip");
-                  request->send(response); });
-  server.on("/index.js", HTTP_GET, [](AsyncWebServerRequest *request)
-            {
-                  AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/index.js.gz", "text/javascript");
-                  response->addHeader("Content-Encoding", "gzip");
-                  request->send(response); });
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
-            {
-                  AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/settings.html.gz", "text/html");
-                  response->addHeader("Content-Encoding", "gzip");
-                  request->send(response); });
-  server.on("/settings.js", HTTP_GET, [](AsyncWebServerRequest *request)
-            {
-                  AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/settings.js.gz", "text/javascript");
-                  response->addHeader("Content-Encoding", "gzip");
-                  request->send(response); });
-  server.on("/common.mjs", HTTP_GET, [](AsyncWebServerRequest *request)
-            {
-                  AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/common.mjs.gz", "text/javascript");
-                  response->addHeader("Content-Encoding", "gzip");
-                  request->send(response); });
-
-  ws.onEvent(onEvent);
-  server.addHandler(&ws);
-  server.begin();
-}
 
 void onEvent(AsyncWebSocket *server,
              AsyncWebSocketClient *client,
@@ -108,23 +52,17 @@ void onEvent(AsyncWebSocket *server,
   {
   case WS_EVT_CONNECT:
   {
-    //                 |      600                  4      |          1      | (2401)
-    // size_t sizeU8 = (width * height) * sizeof(pixels[0]) + sizeof(uint8_t);
-    // uint8_t buffer[sizeU8];
-    // memcpy(&buffer[1], pixels, sizeU8 - 1);
-    // uint8_t *bufferU8 = (uint8_t *)buffer;
-    // bufferU8[0] = MessageType::InitialState;
-    // ws.binary(client->id(), bufferU8, sizeU8);
-
-    size_t sizeU8 = (width * height) * sizeof(uint32_t) + sizeof(uint8_t);
+    constexpr size_t n = 3; 
+    size_t sizeU8 = (width * height) * sizeof(uint32_t) + n*sizeof(uint8_t);
     uint8_t bufferU8[sizeU8];
     size_t ledIndex = 0;
-    bufferU8[0] = MessageType::InitialState;
-
-    for (size_t i = 1; i < sizeU8 - 3; i += 4)
+    bufferU8[0] = MessageType::SetFullState;
+    bufferU8[1] = height;
+    bufferU8[2] = width;
+    for (size_t i = n; i < sizeU8; i += 4)
     {
-      ledIndex = (i - 1) / 4;
-      bufferU8[i] = 0; // may use for additional info
+      ledIndex = (i - n) / 4;
+      bufferU8[i + 0] = 0;
       bufferU8[i + 1] = leds[ledIndex].r;
       bufferU8[i + 2] = leds[ledIndex].g;
       bufferU8[i + 3] = leds[ledIndex].b;
@@ -147,7 +85,10 @@ void onEvent(AsyncWebSocket *server,
     break;
   }
 }
-
+void setPixel(uint8_t x, uint8_t y, uint32_t color)
+{
+  leds[y * width + x] = color;
+}
 void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t N, AsyncWebSocketClient *sender)
 {
   const AwsFrameInfo *frameInfo = (AwsFrameInfo *)(msgInfo);
@@ -161,7 +102,7 @@ void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t N, AsyncWebSock
 
     switch (msgType)
     {
-    case MessageType::SetPoints:
+    case MessageType::SetPointsSolidColor:
     {
       //    0     1  2  .  .  .  .   N-4   N-3   N-2   N-1
       //[msgType][x][y][x][y][x][y][alpha][red][green][blue]
@@ -176,9 +117,9 @@ void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t N, AsyncWebSock
       {
         uint8_t x = data[HEAD_SIZE + i * 2];
         uint8_t y = data[HEAD_SIZE + i * 2 + 1];
-        leds[y * width + x] = color;
+        setPixel(x, y, color);
       }
-      Serial.printf("SetPoints: Color is %08X\n" , color);
+      Serial.printf("SetPoints: Color is %08X\n", color);
       FastLED.show();
 
       AsyncWebSocket::AsyncWebSocketClientLinkedList clients = ws.getClients();
@@ -189,7 +130,7 @@ void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t N, AsyncWebSock
       }
       break;
     }
-    case MessageType::FillSolid:
+    case MessageType::SetSolidColor:
     {
       //           N-4   N-3   N-2   N-1
       //[msgType][alpha][red][green][blue]
@@ -203,10 +144,41 @@ void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t N, AsyncWebSock
         if (client != sender)
           ws.binary(client->id(), data, N);
       }
-      Serial.printf("FillSolid: Color is %08X\n" , color);
-
       break;
     }
+    case MessageType::SetOnePixel:
+    {
+      //                 N-4   N-3   N-2   N-1
+      //[msgType][x][y][alpha][red][green][blue]
+      //    0     1  2     3    4     5      6
+      uint8_t x = data[N - 6];
+      uint8_t y = data[N - 5];
+      uint32_t color = (data[N - 4] << 24) | (data[N - 3] << 16) | (data[N - 2] << 8) | (data[N - 1] << 0);
+      setPixel(x, y, color);
+      FastLED.show();
+      AsyncWebSocket::AsyncWebSocketClientLinkedList clients = ws.getClients();
+      for (auto client : clients)
+      {
+        if (client != sender)
+          ws.binary(client->id(), data, N);
+      }
+      break;
+    }
+    case MessageType::Settings:
+    {
+      //[msgType][height][width]
+      uint8_t height = data[N - 2];
+      uint8_t width = data[N - 1];
+      writeConfig(width,height);
+      AsyncWebSocket::AsyncWebSocketClientLinkedList clients = ws.getClients();
+      for (auto client : clients)
+      {
+        if (client != sender)
+          ws.binary(client->id(), data, N);
+      }
+      break;
+    }
+
     default:
       SignalErrorLed("Got error message");
       break;
@@ -241,6 +213,94 @@ void SignalErrorLed(const char *message, ...)
     digitalWrite(ledPin, !digitalRead(ledPin));
   }
 }
+void readConfig(int* width , int* height)
+{
+  const char* fileName = "/config.txt";
+  File file = LittleFS.open(fileName , "r");
+  if (!file)
+  {
+    SignalErrorLed("Could't read %s" , fileName);
+    return;
+  }
+
+  String widthStr = file.readStringUntil('\n');
+  *width = widthStr.toInt();
+
+  String heightStr = file.readStringUntil('\n');
+  *height = heightStr.toInt();
+
+  file.close();
+}
+void writeConfig(int width, int height)
+{
+  const char* fileName = "/config.txt";
+  File file = LittleFS.open(fileName, "w");
+  if (!file)
+  {
+    SignalErrorLed("Could't open %s for writing", fileName);
+    return;
+  }
+  file.println(width);
+  file.println(height);
+
+  file.close();
+}
+void setup()
+{
+  Serial.begin(115200);
+  if (!LittleFS.begin())
+    SignalErrorLed("LittleFS failed to configure");
+
+  readConfig(&width , &height);
+
+  Serial.printf("width: %d ; height:%d" , width ,height);
+  leds = new CRGB[width * height];
+
+  FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, width * height);
+  FastLED.setBrightness(100);
+  fillSolidColor((uint32_t)0xff0000);
+  FastLED.show();
+
+  if (!WiFi.config(IP, GATEWAY, SUBNET))
+    SignalErrorLed("WiFi init fail...");
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(SSID, password);
+
+  if (WiFi.waitForConnectResult() != WL_CONNECTED)
+  {
+    char buffer[64];
+    sprintf(buffer, "Could't conect to %s with password %s", SSID, password);
+    SignalErrorLed(buffer);
+  }
+
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+            {
+                  AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/index.html.gz", "text/html");
+                  response->addHeader("Content-Encoding", "gzip");
+                  request->send(response); });
+  server.on("/index.js", HTTP_GET, [](AsyncWebServerRequest *request)
+            {
+                  AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/index.js.gz", "text/javascript");
+                  response->addHeader("Content-Encoding", "gzip");
+                  request->send(response); });
+  server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request)
+            {
+                  AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/settings.html.gz", "text/html");
+                  response->addHeader("Content-Encoding", "gzip");
+                  request->send(response); });
+  server.on("/settings.js", HTTP_GET, [](AsyncWebServerRequest *request)
+            {
+                  AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/settings.js.gz", "text/javascript");
+                  response->addHeader("Content-Encoding", "gzip");
+                  request->send(response); });
+
+  ws.onEvent(onEvent);
+  server.addHandler(&ws);
+  server.begin();
+  pinMode(32, INPUT);
+}
+
 void loop()
 {
 }

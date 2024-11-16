@@ -1,6 +1,9 @@
 enum MessageType : uint8_t
 {
-    InitialState = 1,
-    SetPoints = 2,
-    FillSolid = 3,
+    SetFullState = 1,
+    SetPointsSolidColor = 2,
+    SetSolidColor = 3,
+    SetOnePixel = 4, 
+    Settings = 5
+
 };

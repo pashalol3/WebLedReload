@@ -1,15 +1,38 @@
-import Point from './common.mjs';
+"use strict";
 (() => {
     //!!!!!!ВО ВСЕХ СООБЩЕНИЯХ, ДЛЯ ПЕРЕВОДА ИЗ UINT8 в UINT32 ИСПОЛЬЗОВАТЬ LITTLE ENDIAN FALSE!!!!!!
     let MessageType;
     (function (MessageType) {
-        MessageType[MessageType["InitialState"] = 1] = "InitialState";
-        MessageType[MessageType["SetPoints"] = 2] = "SetPoints";
-        MessageType[MessageType["FillSolid"] = 3] = "FillSolid";
+        MessageType[MessageType["SetFullState"] = 1] = "SetFullState";
+        MessageType[MessageType["SetPointsSolidColor"] = 2] = "SetPointsSolidColor";
+        MessageType[MessageType["SetSolidColor"] = 3] = "SetSolidColor";
+        MessageType[MessageType["SetOnePixel"] = 4] = "SetOnePixel";
+        MessageType[MessageType["Settings"] = 5] = "Settings";
     })(MessageType || (MessageType = {}));
+    class Point {
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+        }
+        equals(other) {
+            return this.x === other.x && this.y === other.y;
+        }
+        static fromXY(x, y) {
+            return new Point(x, y);
+        }
+        static zero() {
+            return new Point(0, 0);
+        }
+    }
+    Point.getPointerCoordinates = (canvas, event) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = 'clientX' in event ? event.clientX - rect.left : event.touches[0].clientX - rect.left;
+        const y = 'clientY' in event ? event.clientY - rect.top : event.touches[0].clientY - rect.top;
+        return Point.fromXY(x, y);
+    };
     let isPointerDown = false;
-    const COLUMNS_COUNT = 12;
-    const ROWS_COUNT = 50;
+    let COLUMNS_COUNT = 1;
+    let ROWS_COUNT = 1;
     const GAP = 2;
     const SQUARE_SIZE = 12;
     const canvas = document.getElementById('myCanvas');
@@ -17,7 +40,7 @@ import Point from './common.mjs';
     const canvasWidth = canvas.width;
     const canvasHeight = canvas.height;
     const defaultLedValue = 'undefined';
-    const changedLeds = [[]];
+    let changedLeds = [[]];
     fillLeds(changedLeds, defaultLedValue);
     //EXAMPLE
     //power Of 2      31                                7       
@@ -28,7 +51,7 @@ import Point from './common.mjs';
     // const bigIndian = dw.getUint32(0,false);    //128
     // const littleEndian = dw.getUint32(0,true);  //2147483648
     //EXAMPLE
-    const leds = [[]];
+    let leds = [[]];
     let currentColor = '#000000';
     function fillLeds(leds, colorHex) {
         for (let col = 0; col < COLUMNS_COUNT; col++) {
@@ -71,10 +94,21 @@ import Point from './common.mjs';
             //[msgType][payload]
             //   0     .......
             switch (msgType) {
-                case MessageType.InitialState: {
-                    const slicedBuffer = arrayBuffer.slice(1);
-                    const dataView = new DataView(slicedBuffer);
+                case MessageType.SetFullState: {
+                    let slicedBuffer = arrayBuffer.slice(1);
+                    let dataView = new DataView(slicedBuffer);
+                    const rxHeight = dataView.getUint8(0);
+                    const rxWidth = dataView.getUint8(1);
+                    COLUMNS_COUNT = rxWidth;
+                    ROWS_COUNT = rxHeight;
+                    slicedBuffer = arrayBuffer.slice(3);
+                    dataView = new DataView(slicedBuffer);
+                    //TODO: 2x dataView
                     const uint32ArrayLength = dataView.byteLength / 4;
+                    changedLeds = [[]];
+                    fillLeds(changedLeds, defaultLedValue);
+                    leds = [[]];
+                    fillLeds(leds, '#ff0000');
                     for (let i = 0; i < uint32ArrayLength; i++) {
                         const uint32 = dataView.getUint32(i * 4, false);
                         const x = i % COLUMNS_COUNT;
@@ -85,9 +119,7 @@ import Point from './common.mjs';
                     }
                     break;
                 }
-                case MessageType.SetPoints: {
-                    //    0     4  5  .  .  .  .   N-4   N-3   N-2   N-1
-                    //[msgType][x][y][x][y][x][y][alpha][red][green][blue]
+                case MessageType.SetOnePixel: {
                     const N = arrayBuffer.byteLength;
                     const HEAD_SIZE = 1;
                     const COLOR_SIZE = 4;
@@ -104,7 +136,7 @@ import Point from './common.mjs';
                     }
                     break;
                 }
-                case MessageType.FillSolid: {
+                case MessageType.SetSolidColor: {
                     //           N-4   N-3   N-2   N-1
                     //[msgType][alpha][red][green][blue]
                     //    0        1    2     3      4
@@ -114,6 +146,16 @@ import Point from './common.mjs';
                     const b = dataView.getUint8(4);
                     const color = RGBtoHEX(r, g, b);
                     fillLeds(leds, color);
+                    break;
+                }
+                case MessageType.Settings: {
+                    //           N-4   N-3   N-2   N-1
+                    //[msgType][alpha][red][green][blue]
+                    //    0        1    2     3      4
+                    const h = dataView.getUint8(1);
+                    const w = dataView.getUint8(2);
+                    COLUMNS_COUNT = w;
+                    ROWS_COUNT - h;
                     break;
                 }
                 default:
@@ -126,16 +168,18 @@ import Point from './common.mjs';
         }
     };
     const drawSquares = () => {
+        ctx.save();
+        ctx.fillStyle = '#181818';
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
         for (let col = 0; col < COLUMNS_COUNT; col++) {
             for (let row = 0; row < ROWS_COUNT; row++) {
                 const x = col * (SQUARE_SIZE + GAP) + (canvasWidth - COLUMNS_COUNT * (SQUARE_SIZE + GAP)) / 2;
                 const y = row * (SQUARE_SIZE + GAP) + (canvasHeight - ROWS_COUNT * (SQUARE_SIZE + GAP)) / 2;
-                ctx.save();
                 ctx.fillStyle = leds[col][row];
                 ctx.fillRect(x, y, SQUARE_SIZE, SQUARE_SIZE);
-                ctx.restore();
             }
         }
+        ctx.restore();
     };
     //TODO: Handle error
     const ledStateSwitchCallback = (changedLeds, colorHex) => {
@@ -163,7 +207,7 @@ import Point from './common.mjs';
             u8bufferDataView.setUint8(bytesOffset++, point.x);
             u8bufferDataView.setUint8(bytesOffset++, point.y);
         }
-        u8bufferDataView.setUint8(0, MessageType.SetPoints);
+        u8bufferDataView.setUint8(0, MessageType.SetPointsSolidColor);
         const { r, g, b } = HEXtoRGB(colorHex);
         u8bufferDataView.setUint8(bytesOffset++, 0); //alpha
         u8bufferDataView.setUint8(bytesOffset++, r); //red
@@ -200,7 +244,7 @@ import Point from './common.mjs';
                 b,
             ]);
             const dataView = new DataView(buffer.buffer);
-            dataView.setUint8(0, MessageType.FillSolid);
+            dataView.setUint8(0, MessageType.SetSolidColor);
             ws.send(buffer);
             fillLeds(leds, currentColor);
         }

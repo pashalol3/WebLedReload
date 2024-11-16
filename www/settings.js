@@ -1,10 +1,23 @@
-import Point from './common.mjs';
+"use strict";
 (() => {
+    let MessageType;
+    (function (MessageType) {
+        MessageType[MessageType["SetFullState"] = 1] = "SetFullState";
+        MessageType[MessageType["SetPointsSolidColor"] = 2] = "SetPointsSolidColor";
+        MessageType[MessageType["SetSolidColor"] = 3] = "SetSolidColor";
+        MessageType[MessageType["SetOnePixel"] = 4] = "SetOnePixel";
+        MessageType[MessageType["Settings"] = 5] = "Settings";
+    })(MessageType || (MessageType = {}));
+    const getPointerCoordinates = (canvas, event) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = 'clientX' in event ? event.clientX - rect.left : event.touches[0].clientX - rect.left;
+        const y = 'clientY' in event ? event.clientY - rect.top : event.touches[0].clientY - rect.top;
+        return { x, y };
+    };
     const saveButton = document.getElementById("bSave");
     const inputColumnCount = document.getElementById("columnCount");
     ;
     const inputRowCount = document.getElementById("rowCount");
-    const ledTypeSelect = document.getElementById("ledType");
     const lableCoords = document.getElementById("coords");
     const canvas = document.getElementById("myCanvas");
     const ctx = canvas === null || canvas === void 0 ? void 0 : canvas.getContext('2d');
@@ -21,7 +34,6 @@ import Point from './common.mjs';
     let COLUMNS_COUNT = 12;
     let LED_TYPE = 'WS2812B';
     //REMOVE THIS
-    ledTypeSelect.value = LED_TYPE;
     inputColumnCount.value = COLUMNS_COUNT.toString();
     inputRowCount.value = ROWS_COUNT.toString();
     //END REMOVE THIS
@@ -35,7 +47,6 @@ import Point from './common.mjs';
         throw new Error(`WebSocket connection closed: ${event}`);
     };
     ws.onmessage = (event) => {
-        ledTypeSelect.value = LED_TYPE;
         inputColumnCount.value = COLUMNS_COUNT.toString();
         inputRowCount.value = ROWS_COUNT.toString();
     };
@@ -44,7 +55,7 @@ import Point from './common.mjs';
     canvas.addEventListener('touchmove', handlePointerMove);
     function handlePointerMove(event) {
         event.preventDefault();
-        const { x, y } = Point.getPointerCoordinates(canvas, event);
+        const { x, y } = getPointerCoordinates(canvas, event);
         const col = Math.floor((x - (canvasWidth - COLUMNS_COUNT * (SQUARE_SIZE + GAP)) / 2) / (SQUARE_SIZE + GAP));
         const row = Math.floor((y - (canvasHeight - ROWS_COUNT * (SQUARE_SIZE + GAP)) / 2) / (SQUARE_SIZE + GAP));
         if (col >= 0 && col < COLUMNS_COUNT && row >= 0 && row < ROWS_COUNT) {
@@ -80,7 +91,6 @@ import Point from './common.mjs';
         }
     }
     function handleSave(ev) {
-        const ledType = ledTypeSelect === null || ledTypeSelect === void 0 ? void 0 : ledTypeSelect.value;
         const rowCount = parseInt(inputRowCount === null || inputRowCount === void 0 ? void 0 : inputRowCount.value, 10);
         if (rowCount <= 0 || Number.isNaN(rowCount)) {
             alert("Количестов строк не может быть <= 0");
@@ -91,11 +101,17 @@ import Point from './common.mjs';
             alert("Количестов столбцов не может быть <= 0");
             return;
         }
-        LED_TYPE = ledType;
         ROWS_COUNT = rowCount;
         COLUMNS_COUNT = columnCount;
+        const buffer = new Uint8Array([
+            0,
+            ROWS_COUNT,
+            COLUMNS_COUNT
+        ]);
+        const dataView = new DataView(buffer.buffer);
+        dataView.setUint8(0, MessageType.Settings);
+        ws.send(buffer);
         previewLeds();
-        console.log(`lt:${ledType} rc:${rowCount} cc:${columnCount}`);
     }
     function fillLeds(leds, colorHex) {
         for (let col = 0; col < COLUMNS_COUNT; col++) {
