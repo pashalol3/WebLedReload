@@ -52,8 +52,8 @@ void onEvent(AsyncWebSocket *server,
   {
   case WS_EVT_CONNECT:
   {
-    constexpr size_t n = 3; 
-    size_t sizeU8 = (width * height) * sizeof(uint32_t) + n*sizeof(uint8_t);
+    constexpr size_t n = 3;
+    size_t sizeU8 = (width * height) * sizeof(uint32_t) + n * sizeof(uint8_t);
     uint8_t bufferU8[sizeU8];
     size_t ledIndex = 0;
     bufferU8[0] = MessageType::SetFullState;
@@ -81,13 +81,24 @@ void onEvent(AsyncWebSocket *server,
     break;
   }
   case WS_EVT_PONG:
-  case WS_EVT_ERROR:
     break;
+  case WS_EVT_ERROR:
+  {
+    Serial.print("ERROR: Smth woron..\n");
+    break;
+  }
   }
 }
 void setPixel(uint8_t x, uint8_t y, uint32_t color)
 {
-  leds[y * width + x] = color;
+  // leds[y * width + x] = color;
+  uint32_t index = 0;
+  if (x % 2 == 0)
+    index = x * height + y;
+  else
+    index = x * height + (height - 1 - y);
+  leds[index] = color;
+  Serial.printf("%d:%d / %ld\n", x, y , index);
 }
 void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t N, AsyncWebSocketClient *sender)
 {
@@ -154,6 +165,8 @@ void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t N, AsyncWebSock
       uint8_t x = data[N - 6];
       uint8_t y = data[N - 5];
       uint32_t color = (data[N - 4] << 24) | (data[N - 3] << 16) | (data[N - 2] << 8) | (data[N - 1] << 0);
+      Serial.printf("SetOnePixel: %d:%d = %08X\n",x , y , color);
+
       setPixel(x, y, color);
       FastLED.show();
       AsyncWebSocket::AsyncWebSocketClientLinkedList clients = ws.getClients();
@@ -169,7 +182,7 @@ void handleWebSocketMessage(void *msgInfo, uint8_t *data, size_t N, AsyncWebSock
       //[msgType][height][width]
       uint8_t height = data[N - 2];
       uint8_t width = data[N - 1];
-      writeConfig(width,height);
+      writeConfig(width, height);
       AsyncWebSocket::AsyncWebSocketClientLinkedList clients = ws.getClients();
       for (auto client : clients)
       {
@@ -213,13 +226,13 @@ void SignalErrorLed(const char *message, ...)
     digitalWrite(ledPin, !digitalRead(ledPin));
   }
 }
-void readConfig(int* width , int* height)
+void readConfig(int *width, int *height)
 {
-  const char* fileName = "/config.txt";
-  File file = LittleFS.open(fileName , "r");
+  const char *fileName = "/config.txt";
+  File file = LittleFS.open(fileName, "r");
   if (!file)
   {
-    SignalErrorLed("Could't read %s" , fileName);
+    SignalErrorLed("Could't read %s", fileName);
     return;
   }
 
@@ -233,7 +246,7 @@ void readConfig(int* width , int* height)
 }
 void writeConfig(int width, int height)
 {
-  const char* fileName = "/config.txt";
+  const char *fileName = "/config.txt";
   File file = LittleFS.open(fileName, "w");
   if (!file)
   {
@@ -251,13 +264,14 @@ void setup()
   if (!LittleFS.begin())
     SignalErrorLed("LittleFS failed to configure");
 
-  readConfig(&width , &height);
+  readConfig(&width, &height);
 
-  Serial.printf("width: %d ; height:%d" , width ,height);
+  Serial.printf("width: %d ; height:%d\n", width, height);
   leds = new CRGB[width * height];
 
   FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, width * height);
-  FastLED.setBrightness(100);
+  FastLED.setBrightness(30);
+  FastLED.setMaxPowerInVoltsAndMilliamps(5,2000);
   fillSolidColor((uint32_t)0xff0000);
   FastLED.show();
 
