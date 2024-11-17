@@ -1,3 +1,6 @@
+#ifndef MESSAGE_TYPE
+#define MESSAGE_TYPE
+
 enum MessageType : uint8_t
 {
     SetFullState = 1,
@@ -7,3 +10,5 @@ enum MessageType : uint8_t
     Settings = 5
 
 };
+
+#endif //MESSAGE_TYPE
