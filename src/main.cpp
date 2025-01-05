@@ -27,15 +27,16 @@ void setup()
 {
   Serial.begin(115200);
   if (!LittleFS.begin())
-    Helper::FallWithError("LittleFS failed to configure");
-  int width, height;
+    Helper::FallWithError("LittleFS initialization failed");
 
+  int width, height;
   FSWrapper::ReadConfigUnsafe(&width, &height);
+
   ledController = new LedController(width,height);
   ledController->FillSolidColor(0xff0000);
 
   if (!WiFi.config(IP, GATEWAY, SUBNET))
-    Helper::FallWithError("WiFi init fail...");
+    Helper::FallWithError("WiFi initialization failed");
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(SSID, password);
@@ -46,8 +47,8 @@ void setup()
     sprintf(buffer, "Could't conect to %s with password %s", SSID, password);
     Helper::FallWithError(buffer);
   }
+
   webServer = new WebServer(*ledController);
-  
   pinMode(32, INPUT);
 }
 
