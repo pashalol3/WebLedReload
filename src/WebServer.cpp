@@ -1,7 +1,8 @@
 #include "WebServer.hpp"
 
-WebServer::WebServer(LedController &ledController)
+WebServer::WebServer(LedController &ledController, FSWrapper &fsWrapper)
     : _lc(ledController),
+      _fsWrapper(fsWrapper),
       _webServer(new AsyncWebServer(80)),
       _webSocket(new AsyncWebSocket("/socket"))
 {
@@ -27,9 +28,7 @@ WebServer::WebServer(LedController &ledController)
                   request->send(response); });
 
     _webSocket->onEvent([this](AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len)
-                        { 
-                            this->OnEvent(server, client, type, arg, data, len); 
-                        });
+                        { this->OnEvent(server, client, type, arg, data, len); });
     _webServer->addHandler(_webSocket);
     _webServer->begin();
 }
@@ -65,7 +64,7 @@ void WebServer::OnEvent(AsyncWebSocket *server,
     }
     case WS_EVT_DISCONNECT:
     {
-        Serial.printf("WebSocket client #%u disconnected\n", client->id());
+        Helper::Log("WebSocket client #%u disconnected", client->id());
         break;
     }
     case WS_EVT_DATA:
@@ -77,7 +76,7 @@ void WebServer::OnEvent(AsyncWebSocket *server,
         break;
     case WS_EVT_ERROR:
     {
-        Serial.print("ERROR: Smth woron..\n");
+        Helper::Log("ERROR: Smth wrong..", 0);
         break;
     }
     }
@@ -103,10 +102,8 @@ void WebServer::HandleWebSocketMessage(void *msgInfo, uint8_t *data, size_t N, A
             constexpr size_t HEAD_SIZE = 1;
             constexpr size_t COLOR_SIZE = 4;
             size_t pointsCount = (N - HEAD_SIZE - COLOR_SIZE) / 2;
-            uint32_t color = (data[N - 4] << 24) | // alpha
-                             (data[N - 3] << 16) | // red
-                             (data[N - 2] << 8) |  // green
-                             (data[N - 1] << 0);   // blue
+            uint32_t color = (data[N - 4] << 24) | (data[N - 3] << 16) | (data[N - 2] << 8) | (data[N - 1] << 0);
+
             for (size_t i = 0; i < pointsCount; i++)
             {
                 uint8_t x = data[HEAD_SIZE + i * 2];
@@ -155,18 +152,75 @@ void WebServer::HandleWebSocketMessage(void *msgInfo, uint8_t *data, size_t N, A
             }
             break;
         }
-        case MessageType::Settings:
+        case MessageType::WriteSettings:
+        { //    0        1       2        3              4            5              6
+            //[msgType][height][width][dirArraySize][dirArraySize][dirArraySize][dirArraySize][X][Y][...]
+            uint16_t byteOffset = 1;
+            uint8_t width = data[byteOffset++];
+            uint8_t height = data[byteOffset++];
+            uint32_t refPointsSize = (data[byteOffset++] << 24) |
+                                     (data[byteOffset++] << 16) |
+                                     (data[byteOffset++] << 8) |
+                                     (data[byteOffset++] << 0);
+            Helper::Log("refPointsSize=%d", refPointsSize);
+            Point *refPoints = new Point[refPointsSize]; // free?
+
+            uint8_t *dirArray = &data[byteOffset]; // dont move offset becouse its moving inside for loop!!!!
+
+            for (size_t i = 0; i < refPointsSize; i++)
+            {
+                constexpr uint16_t POINT_BYTE_SIZE = 4;
+                uint16_t x = (data[byteOffset++] << 8) | data[byteOffset++];
+                uint16_t y = (data[byteOffset++] << 8) | data[byteOffset++];
+                refPoints[i].X = x;
+                refPoints[i].Y = y;
+            }
+
+            FSWrapper::WriteConfigUnsafe(width, height, refPoints, refPointsSize);
+
+            ESP.restart();
+
+            break;
+        }
+
+        case MessageType::ReadSettings:
         {
-            //[msgType][height][width]
-            uint8_t height = data[N - 2];
-            uint8_t width = data[N - 1];
-            FSWrapper::WriteConfigUnsafe(width, height);
+            /*
+            index:      0       1     2      3..6         7..8   9..10
+                    [msgType][ROWS][COLS][refPointsSize][xIndex][yIndex]
+            size:       1       1     1        4            2       2
+            */
+            const uint8_t HEAD_SIZE = 3 + 4;
+            size_t totalSize = HEAD_SIZE + _fsWrapper.RefPointsSize * 4;
+            uint8_t bufferToSend[totalSize] =
+                {
+                    MessageType::ReadSettings,
+                    _fsWrapper.Width,
+                    _fsWrapper.Height,
+                    (_fsWrapper.RefPointsSize >> 24) & 0xFF,
+                    (_fsWrapper.RefPointsSize >> 16) & 0xFF,
+                    (_fsWrapper.RefPointsSize >> 8) & 0xFF,
+                    (_fsWrapper.RefPointsSize >> 0) & 0xFF,
+
+                };
+
+            for (size_t i = 0; i < _fsWrapper.RefPointsSize; i++)
+            {
+                // x
+                bufferToSend[HEAD_SIZE + i * 4 + 0] = (_fsWrapper.RefPoints[i].X >> 8) & 0xFF;
+                bufferToSend[HEAD_SIZE + i * 4 + 1] = (_fsWrapper.RefPoints[i].X >> 0) & 0xFF;
+                // y
+                bufferToSend[HEAD_SIZE + i * 4 + 2] = (_fsWrapper.RefPoints[i].Y >> 8) & 0xFF;
+                bufferToSend[HEAD_SIZE + i * 4 + 3] = (_fsWrapper.RefPoints[i].Y >> 0) & 0xFF;
+            }
+
             AsyncWebSocket::AsyncWebSocketClientLinkedList clients = _webSocket->getClients();
             for (auto client : clients)
             {
-                if (client != sender)
-                    _webSocket->binary(client->id(), data, N);
+                if (client == sender)
+                    _webSocket->binary(client->id(), bufferToSend, totalSize);
             }
+
             break;
         }
 

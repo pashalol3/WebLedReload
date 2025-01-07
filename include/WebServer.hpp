@@ -12,9 +12,10 @@ private:
     LedController &_lc;
     AsyncWebServer *_webServer;
     AsyncWebSocket *_webSocket;
+    FSWrapper &_fsWrapper;
 
 public:
-    WebServer(LedController &ledController);
+    WebServer(LedController &ledController, FSWrapper &fsWrapper);
     void HandleWebSocketMessage(void *msgInfo, uint8_t *data, size_t N, AsyncWebSocketClient *sender);
     void OnEvent(AsyncWebSocket *server,
                             AsyncWebSocketClient *client,

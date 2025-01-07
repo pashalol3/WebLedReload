@@ -3,7 +3,9 @@ enum MessageType {
     SetPointsSolidColor = 2,
     SetSolidColor = 3,
     SetOnePixel = 4,
-    Settings = 5
+    WriteSettings = 5,
+    ReadSettings = 6,
+
 }
 
 enum PixelType {
@@ -47,15 +49,7 @@ const getPointerCoordinates = (canvas: HTMLCanvasElement, event: PointerEvent | 
     const ws: WebSocket = new WebSocket(wsAddress);
     let isDown = false;
     const leds: PixelType[][] = [[]];
-    let supportPoints: Point[] = [];
-    // const finalNumbersArray = Array<number>(ROWS_COUNT * COLUMNS_COUNT).fill(0);
-
-
-
-    //REMOVE THIS
-    inputColumnCount.value = COLUMNS_COUNT.toString();
-    inputRowCount.value = ROWS_COUNT.toString();
-    //END REMOVE THIS
+    let refPoints: Point[] = [];
 
     fillLeds(leds, PixelType.Default);
 
@@ -65,13 +59,58 @@ const getPointerCoordinates = (canvas: HTMLCanvasElement, event: PointerEvent | 
     ws.onerror = (event) => {
         throw new Error(`WebSocket Error: ${event}`);
     };
-
+    ws.onopen = (event) => {
+        const u8buffer = new Uint8Array(1);
+        const u8bufferDataView = new DataView(u8buffer.buffer);
+        let bytesOffset = 0;
+        u8bufferDataView.setUint8(bytesOffset++, MessageType.ReadSettings)
+        ws.send(u8buffer);
+    }
     ws.onclose = (event) => {
+        alert("OFFLINE!!!!!");
         throw new Error(`WebSocket connection closed: ${event}`);
     }
     ws.onmessage = (event) => {
-        inputColumnCount.value = COLUMNS_COUNT.toString();
-        inputRowCount.value = ROWS_COUNT.toString();
+        if (event.data instanceof ArrayBuffer) {
+            const arrayBuffer = event.data as ArrayBuffer;
+            const dataView = new DataView(arrayBuffer);
+            let bytesOffset = 0;
+            const msgType: MessageType = dataView.getUint8(bytesOffset++);
+            //[msgType][payload]
+            //   0     .......
+            switch (msgType) {
+                case MessageType.ReadSettings:
+                    /*
+                        0       1     2      3..6         7..8   9..10
+                    [msgType][ROWS][COLS][refPointsSize][xIndex][yIndex]
+                        1       1     1        4            2       2
+                    */
+                //    console.table(dataView);
+                    ROWS_COUNT = dataView.getUint8(bytesOffset++);
+                    COLUMNS_COUNT = dataView.getUint8(bytesOffset++);
+                    const refPointsSize = dataView.getUint32(bytesOffset, false)
+                    bytesOffset += 4;
+                    for (let i = 0; i < refPointsSize; i++) {
+                        const xIndex = dataView.getUint16(bytesOffset, false);
+                        bytesOffset += 2;
+                        const yIndex = dataView.getUint16(bytesOffset, false);
+                        bytesOffset += 2;
+                        refPoints.push(
+                            {
+                                col: xIndex,
+                                row: yIndex
+                            })
+                    }
+                    inputColumnCount.value = COLUMNS_COUNT.toString();
+                    inputRowCount.value = ROWS_COUNT.toString();
+                    
+                    break;
+                default:
+                    console.log(`Got msg ${msgType}`)
+                    break;
+
+            }
+        }
     }
 
     saveButton?.addEventListener('click', handleSave);
@@ -92,15 +131,14 @@ const getPointerCoordinates = (canvas: HTMLCanvasElement, event: PointerEvent | 
 
         const predicate = (s: Point) => s.col === cords.col && s.row === cords.row;
 
-        const exists = supportPoints.some(s => predicate(s));
+        const exists = refPoints.some(s => predicate(s));
         if (exists) {
-            supportPoints = supportPoints.filter(s => !predicate(s));
+            refPoints = refPoints.filter(s => !predicate(s));
         } else {
-            supportPoints.push(cords);
+            refPoints.push(cords);
         }
 
         leds[col][row] = next;
-        console.table(supportPoints);
     }
 
     function handlePointerUp(event: PointerEvent | TouchEvent) {
@@ -114,16 +152,13 @@ const getPointerCoordinates = (canvas: HTMLCanvasElement, event: PointerEvent | 
 
     const putNums = () => {
         let idx = 0;
-        // Предполагается, что supportPoints - это массив упорядоченных точек
-        for (let i = 0; i < supportPoints.length - 1; i += 2) {
-            const first = supportPoints[i];
-            const second = supportPoints[i + 1];
+        for (let i = 0; i < refPoints.length - 1; i += 2) {
+            const first = refPoints[i];
+            const second = refPoints[i + 1];
 
             if (first.col !== second.col) {
-                // Если колонки разные, рисуем по колонкам
                 idx = drawNumbersBetweenPoints(first, second, true, idx);
             } else if (first.row !== second.row) {
-                // Если строки разные, рисуем по строкам
                 idx = drawNumbersBetweenPoints(first, second, false, idx);
             }
         }
@@ -156,7 +191,7 @@ const getPointerCoordinates = (canvas: HTMLCanvasElement, event: PointerEvent | 
             idx++;
         }
 
-        return idx; // Возвращаем обновленный индекс
+        return idx;
     }
 
 
@@ -192,6 +227,18 @@ const getPointerCoordinates = (canvas: HTMLCanvasElement, event: PointerEvent | 
             }
         }
     }
+    const uint32ToByteArray = (num: number): Uint8Array => {
+        if (num < 0 || num > 0xFFFFFFFF) throw new RangeError('Number must be a uint32 (0 to 4294967295)');
+
+        const byteArray = new Uint8Array(4);
+        byteArray[0] = (num >> 24) & 0xFF;
+        byteArray[1] = (num >> 16) & 0xFF;
+        byteArray[2] = (num >> 8) & 0xFF;
+        byteArray[3] = num & 0xFF;
+
+        return byteArray;
+    }
+
     function handleSave(ev: MouseEvent) {
         const rowCount: number = parseInt(inputRowCount?.value, 10);
         if (rowCount <= 0 || Number.isNaN(rowCount)) {
@@ -205,14 +252,37 @@ const getPointerCoordinates = (canvas: HTMLCanvasElement, event: PointerEvent | 
         }
         ROWS_COUNT = rowCount;
         COLUMNS_COUNT = columnCount;
-        const buffer: Uint8Array = new Uint8Array([
-            0,
-            ROWS_COUNT,
-            COLUMNS_COUNT
-        ]);
-        const dataView = new DataView(buffer.buffer);
-        dataView.setUint8(0, MessageType.Settings);
-        ws.send(buffer);
+
+        const refPointsSize = refPoints.length;
+        if (refPointsSize % 2 !== 0) {
+            alert("Количестов опорных точек должно быть четным");
+            return;
+        }
+
+        /*
+       index:      0       1     2      3..6         7..8   9..10
+               [msgType][ROWS][COLS][refPointsSize][xIndex][yIndex]
+       size:       1       1     1        4            2       2
+       */
+        const u8buffer = new Uint8Array(7 + 4 * refPointsSize);
+        const u8bufferDataView = new DataView(u8buffer.buffer);
+        let bytesOffset = 0;
+        u8bufferDataView.setUint8(bytesOffset++, MessageType.WriteSettings)
+        u8bufferDataView.setUint8(bytesOffset++, ROWS_COUNT);
+        u8bufferDataView.setUint8(bytesOffset++, COLUMNS_COUNT);
+        const sizeInBytes = uint32ToByteArray(refPointsSize);
+        u8bufferDataView.setUint8(bytesOffset++, sizeInBytes[0]);
+        u8bufferDataView.setUint8(bytesOffset++, sizeInBytes[1]);
+        u8bufferDataView.setUint8(bytesOffset++, sizeInBytes[2]);
+        u8bufferDataView.setUint8(bytesOffset++, sizeInBytes[3]);
+
+        for (let i = 0; i < refPointsSize; i++) {
+            u8bufferDataView.setUint16(bytesOffset, refPoints[i].col , false);
+            bytesOffset += 2;
+            u8bufferDataView.setUint16(bytesOffset, refPoints[i].row , false);
+            bytesOffset += 2;
+        }
+        ws.send(u8buffer);
 
         previewLeds();
 

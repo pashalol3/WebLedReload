@@ -4,7 +4,7 @@
 #include <stdint.h>
 class Helper
 {
-private:
+#define Log(message, ...) _log(__func__, message, __VA_ARGS__)
 public:
     static void FallWithError(const char *message, ...)
     {
@@ -22,7 +22,8 @@ public:
             digitalWrite(ledPin, !digitalRead(ledPin));
         }
     }
-    static void AssertAndFallWithError(bool predicate, const char *message, ...)
+
+    static void Assert(bool predicate, const char *message, ...)
     {
         if (!predicate)
         {
@@ -32,6 +33,17 @@ public:
             va_end(args);
         }
     }
+    static void _log(const char *methodName, const char *message, ...)
+    {
+        va_list args;
+        va_start(args, message);
+        char formattedMessage[256];
+        vsnprintf(formattedMessage, sizeof(formattedMessage), message, args);
+        Serial.println(formattedMessage);
+        va_end(args);
+    }
+
+private:
 };
 
 #endif // HELPER

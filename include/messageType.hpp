@@ -7,7 +7,8 @@ enum MessageType : uint8_t
     SetPointsSolidColor = 2,
     SetSolidColor = 3,
     SetOnePixel = 4, 
-    Settings = 5
+    WriteSettings = 5,
+    ReadSettings = 6,
 
 };
 

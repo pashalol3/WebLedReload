@@ -1,11 +1,18 @@
+import { log } from "console";
+
 (() => {
+
+
+
     //!!!!!!ВО ВСЕХ СООБЩЕНИЯХ, ДЛЯ ПЕРЕВОДА ИЗ UINT8 в UINT32 ИСПОЛЬЗОВАТЬ LITTLE ENDIAN FALSE!!!!!!
     enum MessageType {
         SetFullState = 1,
         SetPointsSolidColor = 2,
         SetSolidColor = 3,
-        SetOnePixel = 4,
-        Settings = 5
+        SetOnePixel = 4, 
+        WriteSettings = 5,
+        ReadSettings = 6,
+    
     }
 
     class Point {
@@ -77,6 +84,23 @@
         const b = parseInt(colorHex.slice(5, 7), 16);
         return { r, g, b };
     }
+    const uint32ToByteArray = (num: number): Uint8Array => {
+        if (num < 0 || num > 0xFFFFFFFF) throw new RangeError('Number must be a uint32 (0 to 4294967295)');
+
+        const byteArray = new Uint8Array(4);
+        byteArray[0] = (num >> 24) & 0xFF;
+        byteArray[1] = (num >> 16) & 0xFF;
+        byteArray[2] = (num >> 8) & 0xFF;
+        byteArray[3] = num & 0xFF;
+
+        return byteArray;
+    }
+
+    const byteArrayToUint32 = (byteArray: Uint8Array): number => {
+        if (byteArray.length !== 4) throw new Error('Array must be of length 4');
+        return (byteArray[0] << 24) | (byteArray[1] << 16) | (byteArray[2] << 8) | byteArray[3];
+    }
+
     const RGBtoHEX = (r: number, g: number, b: number): string => {
         const toHex = (value: number): string => value.toString(16).padStart(2, '0');
 
@@ -160,14 +184,16 @@
                     fillLeds(leds, color);
                     break;
                 }
-                case MessageType.Settings: {
-                    //           N-4   N-3   N-2   N-1
-                    //[msgType][alpha][red][green][blue]
-                    //    0        1    2     3      4
-                    const h = dataView.getUint8(1);
-                    const w = dataView.getUint8(2);
-                    COLUMNS_COUNT = w;
-                    ROWS_COUNT - h;
+                case MessageType.ReadSettings: {
+                    // const h = dataView.getUint8(1);
+                    // const w = dataView.getUint8(2);
+                    // COLUMNS_COUNT = w;
+                    // ROWS_COUNT = h;
+                    console.log("Got ReadSettings");
+                    break;
+                }
+                case MessageType.WriteSettings: {
+                    console.log("Got WriteSettings")
                     break;
                 }
 
@@ -190,10 +216,10 @@
             for (let row = 0; row < ROWS_COUNT; row++) {
                 const x = col * (SQUARE_SIZE + GAP) + (canvasWidth - COLUMNS_COUNT * (SQUARE_SIZE + GAP)) / 2;
                 const y = row * (SQUARE_SIZE + GAP) + (canvasHeight - ROWS_COUNT * (SQUARE_SIZE + GAP)) / 2;
-                
+
                 ctx.fillStyle = leds[col][row];
                 ctx.fillRect(x, y, SQUARE_SIZE, SQUARE_SIZE);
-                
+
             }
         }
         ctx.restore();
