@@ -1,5 +1,19 @@
 #include "LedController.hpp"
 
+LedController::LedController(uint8_t width, uint8_t height)
+{
+    Width = width;
+    Height = height;
+
+    DCreatePixels(width, height);
+    DCreateTranlateMatrix(width, height);
+
+    const int LED_PIN = 16; // MOVE THIS
+    FastLED.addLeds<WS2812B, LED_PIN, GRB>(Pixels, width * height);
+    FastLED.setMaxPowerInVoltsAndMilliamps(5, 2000);
+    FastLED.setBrightness(30);
+}
+
 void LedController::DCreatePixels(uint8_t width, uint8_t height)
 {
     if (Pixels != nullptr)
@@ -11,7 +25,7 @@ void LedController::DCreateTranlateMatrix(uint8_t width, uint8_t height)
 {
     if (TranslateMatrix != nullptr)
     {
-        for (int i = 0; i < Height; ++i)
+        for (int i = 0; i < height; ++i)
         {
             delete[] TranslateMatrix[i];
         }
@@ -30,6 +44,11 @@ void LedController::FillTranslateMatrix(Point *refPoints, size_t N)
 {
     Helper::Assert(N % 2 == 0, "N % 2 must be zero");
     Helper::Assert(refPoints != nullptr, "refPoints cant be nullptr");
+    for (int i = 0; i < Height; ++i)
+    {
+        Helper::Assert(TranslateMatrix[i] != nullptr, "TranslateMatrix[%d] was nullptr", i);
+    }
+    Helper::Log("points size=%zu", N);
     size_t ledIndex = 0;
     for (size_t i = 0; i < N; i += 2)
     {
@@ -44,44 +63,21 @@ void LedController::FillTranslateMatrix(Point *refPoints, size_t N)
 
         for (size_t j = startPos; j != endPos + step; j += step)
         {
-            uint16_t x = isHorizontal ? j : start.X; 
+            uint16_t x = isHorizontal ? j : start.X;
             uint16_t y = isHorizontal ? start.Y : j;
-            Helper::Assert(x < Width, "x=%d but max value =%d", x, Width);
-            Helper::Assert(y < Height, "y=%d but max value =%d", y, Height);
-            TranslateMatrix[x][y] = ledIndex++;
+            Helper::Assert(x < Width, "x=%d but max value=%d", x, Width);
+            Helper::Assert(y < Height, "y=%d but max value=%d", y, Height);
+            TranslateMatrix[y][x] = ledIndex++; // because first allocation height
         }
     }
-
-    // for (size_t x = 0; x < Width; x++)
-    // {
-    //     for (size_t y = 0; y < Height; y++)
-    //     {
-    //         Serial.printf("%04d\t", TranslateMatrix[x][y]);
-    //     }
-    //     Serial.print("\n");
-    // }
 }
 
 uint32_t LedController::GetIndex(uint16_t x, uint16_t y)
 {
     // Negative value will be converted to uint value
-    assert(x <= Width && y <= Height);
-    uint32_t index = TranslateMatrix[x][y];
-    return index;
-}
-
-LedController::LedController(uint8_t width, uint8_t height)
-{
-    Width = width;
-    Height = height;
-
-    DCreatePixels(width, height);
-    DCreateTranlateMatrix(width, height);
-
-    const int LED_PIN = 16; // MOVE THIS
-    FastLED.addLeds<WS2812B, LED_PIN, GRB>(Pixels, width * height);
-    FastLED.setMaxPowerInVoltsAndMilliamps(5, 2000);
-    FastLED.setBrightness(30);
+    Helper::Assert(y <= Height, "y <= Height");
+    Helper::Assert(x <= Width, "x <= Width");
+    return TranslateMatrix[y][x]; // because first allocation height
 }
 
 void LedController::FillSolidColor(uint32_t color, bool show)

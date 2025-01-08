@@ -2,9 +2,12 @@
 #define HELPER
 #include <Arduino.h>
 #include <stdint.h>
+
 class Helper
 {
-#define Log(message, ...) _log(__func__, message, __VA_ARGS__)
+
+#define Log(message, ...) _log(__FILE__, message, ##__VA_ARGS__)
+#define Assert(predicate, message, ...) _assert(predicate,__FILE__, __LINE__, message, ##__VA_ARGS__)
 public:
     static void FallWithError(const char *message, ...)
     {
@@ -23,22 +26,31 @@ public:
         }
     }
 
-    static void Assert(bool predicate, const char *message, ...)
+    static void _assert(bool predicate, const char *fileName,  int line, const char *message, ...)
     {
         if (!predicate)
         {
             va_list args;
             va_start(args, message);
-            Helper::FallWithError(message, args);
+
+            char assertionMessage[256];
+
+            snprintf(assertionMessage, sizeof(assertionMessage), "[AssertionFailed] %s:%d: ", fileName, line);
+
+            vsnprintf(assertionMessage + strlen(assertionMessage), sizeof(assertionMessage) - strlen(assertionMessage), message, args);
+
+            Helper::FallWithError(assertionMessage);
+
             va_end(args);
         }
     }
-    static void _log(const char *methodName, const char *message, ...)
+    static void _log(const char *fileName, const char *message, ...)
     {
         va_list args;
         va_start(args, message);
         char formattedMessage[256];
-        vsnprintf(formattedMessage, sizeof(formattedMessage), message, args);
+        snprintf(formattedMessage, sizeof(formattedMessage), "[%s] ", fileName);
+        vsnprintf(formattedMessage + strlen(formattedMessage), sizeof(formattedMessage) - strlen(formattedMessage), message, args);
         Serial.println(formattedMessage);
         va_end(args);
     }

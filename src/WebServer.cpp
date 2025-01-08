@@ -97,12 +97,13 @@ void WebServer::HandleWebSocketMessage(void *msgInfo, uint8_t *data, size_t N, A
         {
         case MessageType::SetPointsSolidColor:
         {
-            //    0     1  2  .  .  .  .   N-4   N-3   N-2   N-1
             //[msgType][x][y][x][y][x][y][alpha][red][green][blue]
+            //    1     1  1  ...    ...    1     1     1      1
+            size_t rByteOffset = N - 1;
             constexpr size_t HEAD_SIZE = 1;
             constexpr size_t COLOR_SIZE = 4;
             size_t pointsCount = (N - HEAD_SIZE - COLOR_SIZE) / 2;
-            uint32_t color = (data[N - 4] << 24) | (data[N - 3] << 16) | (data[N - 2] << 8) | (data[N - 1] << 0);
+            uint32_t color = (data[rByteOffset--] << 24) | (data[rByteOffset--] << 16) | (data[rByteOffset--] << 8) | (data[rByteOffset--] << 0);
 
             for (size_t i = 0; i < pointsCount; i++)
             {
@@ -121,10 +122,10 @@ void WebServer::HandleWebSocketMessage(void *msgInfo, uint8_t *data, size_t N, A
         }
         case MessageType::SetSolidColor:
         {
-            //           N-4   N-3   N-2   N-1
             //[msgType][alpha][red][green][blue]
-            //    0       1     2     3     4
-            uint32_t color = (data[N - 4] << 24) | (data[N - 3] << 16) | (data[N - 2] << 8) | (data[N - 1] << 0);
+            //    0       1     1     1     1
+            size_t byteOffset = 1;
+            uint32_t color = (data[byteOffset++] << 24) | (data[byteOffset++] << 16) | (data[byteOffset++] << 8) | (data[byteOffset++] << 0);
             _lc.FillSolidColor(color);
             FastLED.show();
             AsyncWebSocket::AsyncWebSocketClientLinkedList clients = _webSocket->getClients();
@@ -137,12 +138,12 @@ void WebServer::HandleWebSocketMessage(void *msgInfo, uint8_t *data, size_t N, A
         }
         case MessageType::SetOnePixel:
         {
-            //                 N-4   N-3   N-2   N-1
             //[msgType][x][y][alpha][red][green][blue]
-            //    0     1  2     3    4     5      6
-            uint8_t x = data[N - 6];
-            uint8_t y = data[N - 5];
-            uint32_t color = (data[N - 4] << 24) | (data[N - 3] << 16) | (data[N - 2] << 8) | (data[N - 1] << 0);
+            //    0     1  1    1     1     1      1
+            size_t byteOffset = 1; //msgType
+            uint8_t x = data[byteOffset++];
+            uint8_t y = data[byteOffset++];
+            uint32_t color = (data[byteOffset++] << 24) | (data[byteOffset++] << 16) | (data[byteOffset++] << 8) | (data[byteOffset++] << 0);
             _lc.SetPixel(x, y, color, true);
             AsyncWebSocket::AsyncWebSocketClientLinkedList clients = _webSocket->getClients();
             for (auto client : clients)
@@ -153,11 +154,10 @@ void WebServer::HandleWebSocketMessage(void *msgInfo, uint8_t *data, size_t N, A
             break;
         }
         case MessageType::WriteSettings:
-        { //    0        1       2        3              4            5              6
-            //[msgType][height][width][dirArraySize][dirArraySize][dirArraySize][dirArraySize][X][Y][...]
+        { 
             uint16_t byteOffset = 1;
-            uint8_t width = data[byteOffset++];
             uint8_t height = data[byteOffset++];
+            uint8_t width = data[byteOffset++];
             uint32_t refPointsSize = (data[byteOffset++] << 24) |
                                      (data[byteOffset++] << 16) |
                                      (data[byteOffset++] << 8) |
@@ -185,22 +185,19 @@ void WebServer::HandleWebSocketMessage(void *msgInfo, uint8_t *data, size_t N, A
 
         case MessageType::ReadSettings:
         {
-            /*
-            index:      0       1     2      3..6         7..8   9..10
-                    [msgType][ROWS][COLS][refPointsSize][xIndex][yIndex]
-            size:       1       1     1        4            2       2
-            */
+            // [msgType][Height][Width][refPointsSize][xIndex][yIndex]
+            //     1       1     1            4          2       2
             const uint8_t HEAD_SIZE = 3 + 4;
             size_t totalSize = HEAD_SIZE + _fsWrapper.RefPointsSize * 4;
             uint8_t bufferToSend[totalSize] =
                 {
                     MessageType::ReadSettings,
-                    _fsWrapper.Width,
                     _fsWrapper.Height,
-                    (_fsWrapper.RefPointsSize >> 24) & 0xFF,
-                    (_fsWrapper.RefPointsSize >> 16) & 0xFF,
-                    (_fsWrapper.RefPointsSize >> 8) & 0xFF,
-                    (_fsWrapper.RefPointsSize >> 0) & 0xFF,
+                    _fsWrapper.Width,
+                    (uint8_t)((_fsWrapper.RefPointsSize >> 24) & 0xFF),
+                    (uint8_t)((_fsWrapper.RefPointsSize >> 16) & 0xFF),
+                    (uint8_t)((_fsWrapper.RefPointsSize >> 8) & 0xFF),
+                    (uint8_t)((_fsWrapper.RefPointsSize >> 0) & 0xFF),
 
                 };
 
